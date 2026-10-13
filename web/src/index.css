@@ -216,6 +216,67 @@ body {
   font-weight: 500;
 }
 
+.player-matchup-summary,
+.player-recent-games {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.player-matchup-groups {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.player-matchup-group {
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+}
+
+.player-matchup-group h4 {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.player-matchup-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.player-matchup-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+}
+
+.player-matchup-label {
+  grid-column: 1 / -1;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.player-matchup-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.player-matchup-record,
+.player-matchup-empty {
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
 .player-recent-list {
   display: flex;
   flex-direction: column;
@@ -471,6 +532,10 @@ body {
   .player-recent-teams {
     grid-template-columns: 1fr;
     gap: var(--space-1);
+  }
+
+  .player-matchup-groups {
+    grid-template-columns: 1fr;
   }
 
   .player-recent-team.right {
