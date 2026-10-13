@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode, RefObject } from "react";
 import { ArrowUp } from "lucide-react";
 import { AnimatePresence, animate, motion, useMotionValue, useReducedMotion, type Transition, type Variants } from "motion/react";
@@ -35,6 +35,12 @@ export type SortableDataTableProps<T extends Record<string, unknown>> = {
   selectedKeys?: string[];
   defaultSelectedKeys?: string[];
   onSelectionChange?: (keys: string[]) => void;
+  /** Makes rows activate on click, Enter, or Space, except when an interactive child is used. */
+  onRowActivate?: (row: T) => void;
+  /** Key of the single row whose detail panel is currently expanded. */
+  expandedRowKey?: string;
+  /** Content rendered in a full-width row under the expanded row. */
+  renderExpandedRow?: (row: T) => ReactNode;
   /** Noun for the count line, as in "6 projects". */
   itemName?: { one: string; other: string };
 };
@@ -123,7 +129,7 @@ function SelectBox({ checked, mixed = false, label, nav, reduced, onToggle, inpu
   </label>;
 }
 
-export function SortableDataTable<T extends Record<string, unknown>>({ rows, columns, rowKey, caption = "Data table", emptyMessage = "No rows to show", defaultSort, onSortChange, selectable = false, selectedKeys, defaultSelectedKeys, onSelectionChange, itemName = { one: "row", other: "rows" } }: SortableDataTableProps<T>) {
+export function SortableDataTable<T extends Record<string, unknown>>({ rows, columns, rowKey, caption = "Data table", emptyMessage = "No rows to show", defaultSort, onSortChange, selectable = false, selectedKeys, defaultSelectedKeys, onSelectionChange, onRowActivate, expandedRowKey, renderExpandedRow, itemName = { one: "row", other: "rows" } }: SortableDataTableProps<T>) {
   const reduced = useReducedMotion() ?? false;
   const tableRef = useRef<HTMLTableElement>(null);
   const selectAllRef = useRef<HTMLInputElement>(null);
@@ -235,11 +241,14 @@ export function SortableDataTable<T extends Record<string, unknown>>({ rows, col
     selectAllRef.current?.focus();
   }
 
-  function onRowClick(event: ReactMouseEvent<HTMLTableRowElement>, key: string) {
-    if (!selectable || (event.target as HTMLElement).closest("a, button, input, label, select, textarea, [role='button'], [contenteditable='true']") || window.getSelection()?.toString()) return;
-    toggleRow(key, event.shiftKey);
-    // Keep the keyboard path where the pointer left off, so arrows continue from this row.
-    event.currentTarget.querySelector<HTMLInputElement>("input[type='checkbox']")?.focus({ preventScroll: true });
+  function onRowClick(event: ReactMouseEvent<HTMLTableRowElement>, key: string, row: T) {
+    if ((event.target as HTMLElement).closest("a, button, input, label, select, textarea, [role='button'], [contenteditable='true']") || window.getSelection()?.toString()) return;
+    if (selectable) {
+      toggleRow(key, event.shiftKey);
+      // Keep the keyboard path where the pointer left off, so arrows continue from this row.
+      event.currentTarget.querySelector<HTMLInputElement>("input[type='checkbox']")?.focus({ preventScroll: true });
+    }
+    onRowActivate?.(row);
   }
 
   /** Arrows walk the header controls and the row checkboxes; Escape clears the selection. */
@@ -290,10 +299,35 @@ export function SortableDataTable<T extends Record<string, unknown>>({ rows, col
         <tbody role="rowgroup">{sortedRows.length ? sortedRows.map((row, index) => {
           const key = keys[index]!;
           const selected = selectable && selection.has(key);
-          return <motion.tr key={key} role="row" layout={reduced ? false : "position"} layoutDependency={order} transition={motionTokens.spring.smooth} data-selected={selected || undefined} onClick={event => onRowClick(event, key)} onMouseDown={event => { if (selectable && event.shiftKey) event.preventDefault(); }}>
-            {selectable ? <td role="cell" className={styles.selectCell}><SelectBox checked={selected} label={`Select ${String(row[columns[0]?.key as string] ?? key)}`} nav="row" reduced={reduced} onToggle={extend => toggleRow(key, extend)} /></td> : null}
-            {columns.map((column, columnIndex) => <td key={column.key} role="cell" data-label={column.label} data-primary={columnIndex === 0 || undefined} data-sorted={sort?.key === column.key || undefined} data-numeric={numeric.has(column.key) || undefined}>{column.render ? column.render(row[column.key], row) : String(row[column.key] ?? "–")}</td>)}
-          </motion.tr>;
+          const expanded = expandedRowKey === key && !!renderExpandedRow;
+          const detailId = `row-detail-${key}`;
+          return <Fragment key={key}>
+            <motion.tr
+              role="row"
+              layout={reduced ? false : "position"}
+              layoutDependency={order}
+              transition={motionTokens.spring.smooth}
+              data-selected={selected || undefined}
+              data-expandable={onRowActivate ? "" : undefined}
+              data-expanded={expanded || undefined}
+              tabIndex={onRowActivate ? 0 : undefined}
+              aria-expanded={onRowActivate ? expanded : undefined}
+              aria-controls={expanded ? detailId : undefined}
+              onClick={event => onRowClick(event, key, row)}
+              onKeyDown={event => {
+                if (event.target !== event.currentTarget || !onRowActivate || (event.key !== "Enter" && event.key !== " ")) return;
+                event.preventDefault();
+                onRowActivate(row);
+              }}
+              onMouseDown={event => { if (selectable && event.shiftKey) event.preventDefault(); }}
+            >
+              {selectable ? <td role="cell" className={styles.selectCell}><SelectBox checked={selected} label={`Select ${String(row[columns[0]?.key as string] ?? key)}`} nav="row" reduced={reduced} onToggle={extend => toggleRow(key, extend)} /></td> : null}
+              {columns.map((column, columnIndex) => <td key={column.key} role="cell" data-label={column.label} data-primary={columnIndex === 0 || undefined} data-sorted={sort?.key === column.key || undefined} data-numeric={numeric.has(column.key) || undefined}>{column.render ? column.render(row[column.key], row) : String(row[column.key] ?? "–")}</td>)}
+            </motion.tr>
+            {expanded && <tr id={detailId} className={styles.expandedRow} role="row">
+              <td role="cell" colSpan={columns.length + (selectable ? 1 : 0)}>{renderExpandedRow?.(row)}</td>
+            </tr>}
+          </Fragment>;
         }) : <tr role="row"><td role="cell" className={styles.empty} colSpan={columns.length + (selectable ? 1 : 0)}>{emptyMessage}</td></tr>}</tbody>
       </table>
     </div>

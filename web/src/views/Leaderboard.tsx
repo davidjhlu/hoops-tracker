@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Trophy } from 'lucide-react'
+import { ChevronDown, Trophy } from 'lucide-react'
 import { SortableDataTable, type DataColumn } from '@/components/arc/sortable-data-table/sortable-data-table'
 import { MetricCard } from '@/components/arc/metric-card/metric-card'
 import { Select } from '@/components/arc/select/select'
@@ -7,6 +7,7 @@ import { EmptyState } from '@/components/arc/empty-state/empty-state'
 import { Alert } from '@/components/arc/alert/alert'
 import { api, type Leader, type Mode, type PlayerRef, type PlayerStats, type Stats } from '../api'
 import { ModeFilter } from './ModeFilter'
+import { PlayerRecentGames } from './PlayerRecentGames'
 import { useMediaQuery } from '../useMediaQuery'
 
 type Props = {
@@ -34,20 +35,39 @@ type CompactBoardProps = {
   rows: Row[]
   sort: MobileSort
   emptyMessage: string
+  expandedId: number | null
+  mode: string
+  modes: Mode[]
+  version: number
+  onToggle: (player: Row) => void
   onPlayer: (player: PlayerRef) => void
 }
 
-function CompactBoard({ rows, sort, emptyMessage, onPlayer }: CompactBoardProps) {
+function CompactBoard({ rows, sort, emptyMessage, expandedId, mode, modes, version, onToggle, onPlayer }: CompactBoardProps) {
   if (!rows.length) return <p className="note board-empty">{emptyMessage}</p>
   const sorted = sort === 'rank' ? rows : [...rows].sort((a, b) => b[sort] - a[sort] || a.rank - b.rank)
   return (
     <ol className="board" aria-label="Leaderboard">
       {sorted.map((row) => (
-        <li key={row.id}>
-          <button type="button" className="board-row" onClick={() => onPlayer({ id: row.id, name: row.name })}>
+        <li key={row.id} className="board-item">
+          <div className="board-row-shell">
+            <button
+              type="button"
+              className="board-row-expander"
+              aria-label={`${expandedId === row.id ? 'Hide' : 'Show'} recent games for ${row.name}`}
+              aria-expanded={expandedId === row.id}
+              aria-controls={expandedId === row.id ? `compact-player-games-${row.id}` : undefined}
+              onClick={() => onToggle(row)}
+            />
             <span className="board-rank">{row.rank}</span>
             <span className="board-main">
-              <span className="board-name">{row.name}</span>
+              <button
+                type="button"
+                className="board-name board-name-link"
+                onClick={() => onPlayer({ id: row.id, name: row.name })}
+              >
+                {row.name}
+              </button>
               <span className="board-sub">
                 {streakLabel(row.streak)} · Elo {row.elo}
                 {row.eloProvisional ? '*' : ''}
@@ -59,7 +79,15 @@ function CompactBoard({ rows, sort, emptyMessage, onPlayer }: CompactBoardProps)
                 {row.wins}-{row.losses}
               </span>
             </span>
-          </button>
+            <span className={`board-row-chevron ${expandedId === row.id ? 'is-expanded' : ''}`} aria-hidden="true">
+              <ChevronDown size={16} />
+            </span>
+          </div>
+          {expandedId === row.id && (
+            <div className="board-expanded" id={`compact-player-games-${row.id}`}>
+              <PlayerRecentGames player={row} mode={mode} modes={modes} version={version} />
+            </div>
+          )}
         </li>
       ))}
     </ol>
@@ -69,6 +97,7 @@ function CompactBoard({ rows, sort, emptyMessage, onPlayer }: CompactBoardProps)
 export function Leaderboard({ modes, mode, onModeChange, version, onPlayer }: Props) {
   const [minGames, setMinGames] = useState('1')
   const [mobileSort, setMobileSort] = useState<MobileSort>('rank')
+  const [expandedId, setExpandedId] = useState<number | null>(null)
   // Matches the width where the Arc table folds its rows and drops the column labels.
   const compact = useMediaQuery('(max-width: 619px)')
   const [stats, setStats] = useState<Stats | null>(null)
@@ -92,9 +121,20 @@ export function Leaderboard({ modes, mode, onModeChange, version, onPlayer }: Pr
   const qualified: Row[] = (stats?.leaderboard ?? []).filter((p) => p.qualified).map((p, i) => ({ ...p, rank: i + 1 }))
   const unqualified = (stats?.leaderboard ?? []).filter((p) => !p.qualified)
   const records = stats?.records
+  const toggleExpanded = (row: Row) => setExpandedId((current) => (current === row.id ? null : row.id))
 
   const columns: DataColumn<Row>[] = [
-    { key: 'rank', label: '#', width: 48 },
+    {
+      key: 'rank',
+      label: '#',
+      width: 58,
+      render: (value, row) => (
+        <span className={`leader-rank ${expandedId === row.id ? 'is-expanded' : ''}`}>
+          {value as number}
+          <ChevronDown size={14} aria-hidden="true" />
+        </span>
+      ),
+    },
     {
       key: 'name',
       label: 'Player',
@@ -157,6 +197,11 @@ export function Leaderboard({ modes, mode, onModeChange, version, onPlayer }: Pr
                 rows={qualified}
                 sort={mobileSort}
                 emptyMessage={`Nobody has played ${minGames} games yet. Lower the minimum to see everyone.`}
+                expandedId={expandedId}
+                mode={mode}
+                modes={modes}
+                version={version}
+                onToggle={toggleExpanded}
                 onPlayer={onPlayer}
               />
             ) : (
@@ -168,6 +213,9 @@ export function Leaderboard({ modes, mode, onModeChange, version, onPlayer }: Pr
                 emptyMessage={`Nobody has played ${minGames} games yet. Lower the minimum to see everyone.`}
                 defaultSort={{ key: 'rank', direction: 'asc' }}
                 itemName={{ one: 'player', other: 'players' }}
+                onRowActivate={toggleExpanded}
+                expandedRowKey={expandedId === null ? undefined : String(expandedId)}
+                renderExpandedRow={(row) => <PlayerRecentGames player={row} mode={mode} modes={modes} version={version} />}
               />
             )}
 
