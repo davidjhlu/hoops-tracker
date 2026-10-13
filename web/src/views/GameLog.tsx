@@ -1,19 +1,16 @@
 import { useEffect, useState } from 'react'
 import { Trash2, CalendarDays } from 'lucide-react'
 import { Badge } from '@/components/arc/badge/badge'
-import { Button } from '@/components/arc/button/button'
 import { ConfirmMorph } from '@/components/arc/confirm-morph/confirm-morph'
 import { EmptyState } from '@/components/arc/empty-state/empty-state'
 import { Alert } from '@/components/arc/alert/alert'
-import { api, formatDate, names, type Game, type Mode, type PlayerRef } from '../api'
+import { api, formatDate, names, type Game, type Mode } from '../api'
 import { ModeFilter } from './ModeFilter'
 
 type Props = {
   modes: Mode[]
   mode: string
   onModeChange: (mode: string) => void
-  player: PlayerRef | null
-  onClearPlayer: () => void
   version: number
   onChange: () => void
 }
@@ -25,7 +22,7 @@ const MODE_TONES: Record<string, 'info' | 'success' | 'warning' | 'danger'> = {
   fc5: 'danger',
 }
 
-export function GameLog({ modes, mode, onModeChange, player, onClearPlayer, version, onChange }: Props) {
+export function GameLog({ modes, mode, onModeChange, version, onChange }: Props) {
   const [games, setGames] = useState<Game[] | null>(null)
   const [error, setError] = useState('')
   const modeLabel = (id: string) => modes.find((m) => m.id === id)?.label ?? id
@@ -33,7 +30,7 @@ export function GameLog({ modes, mode, onModeChange, player, onClearPlayer, vers
   useEffect(() => {
     let live = true
     api
-      .games(mode, player?.id)
+      .games(mode)
       .then((g) => {
         if (!live) return
         setGames(g)
@@ -43,17 +40,7 @@ export function GameLog({ modes, mode, onModeChange, player, onClearPlayer, vers
     return () => {
       live = false
     }
-  }, [mode, player, version])
-
-  const record = (() => {
-    if (!player || !games) return null
-    let w = 0
-    for (const g of games) {
-      const onA = g.teamA.some((p) => p.id === player.id)
-      if (onA === g.scoreA > g.scoreB) w += 1
-    }
-    return { w, l: games.length - w }
-  })()
+  }, [mode, version])
 
   // Deleted games stay on screen until the undo window closes, so the row can offer Undo.
   const [ghosts, setGhosts] = useState<Map<number, Game>>(new Map())
@@ -71,8 +58,6 @@ export function GameLog({ modes, mode, onModeChange, player, onClearPlayer, vers
         (a, b) => b.playedAt.localeCompare(a.playedAt) || b.id - a.id,
       )
     : null
-  const visible = player ? shown?.slice(0, 5) : shown
-
   const remove = async (game: Game) => {
     await api.deleteGame(game.id)
     setGhost(game, true)
@@ -95,52 +80,28 @@ export function GameLog({ modes, mode, onModeChange, player, onClearPlayer, vers
     <div className="stack">
       <ModeFilter modes={modes} mode={mode} onModeChange={onModeChange} />
 
-      {player && (
-        <div className="player-filter">
-          <span>
-            Last 5 for <strong>{player.name}</strong>
-            {record && ` · ${record.w}-${record.l} record${mode ? ` in ${modeLabel(mode)}` : ' overall'}`}
-          </span>
-          <Button variant="ghost" size="sm" onClick={onClearPlayer}>
-            Show everyone
-          </Button>
-        </div>
-      )}
-
       {error && (
         <Alert tone="danger" title="Couldn't load games">
           {error}
         </Alert>
       )}
 
-      {visible && visible.length === 0 && (
+      {shown && shown.length === 0 && (
         <EmptyState
           icon={<CalendarDays size={24} />}
           title="No games to show"
-          description={mode || player ? 'Try another mode or clear the player filter.' : 'Logged games show up here, newest first.'}
+          description={mode ? 'Try another mode.' : 'Logged games show up here, newest first.'}
         />
       )}
 
       <ol className="games">
-        {visible?.map((g) => {
+        {shown?.map((g) => {
           const aWon = g.scoreA > g.scoreB
-          const playerWon = player ? (g.teamA.some((p) => p.id === player.id) ? aWon : !aWon) : null
-          const rowClassName = [
-            'game',
-            ghosts.has(g.id) ? 'deleted' : '',
-            playerWon === null ? '' : playerWon ? 'player-win' : 'player-loss',
-          ]
-            .filter(Boolean)
-            .join(' ')
+          const rowClassName = ['game', ghosts.has(g.id) ? 'deleted' : ''].filter(Boolean).join(' ')
           return (
             <li key={g.id} className={rowClassName}>
               <div className="game-meta">
                 <span>{formatDate(g.playedAt)}</span>
-                {playerWon !== null && (
-                  <Badge size="sm" tone={playerWon ? 'success' : 'danger'}>
-                    {playerWon ? 'Win' : 'Loss'}
-                  </Badge>
-                )}
                 {!mode && (
                   <Badge size="sm" tone={MODE_TONES[g.mode] ?? 'neutral'}>
                     {modeLabel(g.mode)}

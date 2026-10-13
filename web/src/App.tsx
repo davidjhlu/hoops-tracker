@@ -5,6 +5,7 @@ import { api, type Mode, type PlayerRef } from './api'
 import { Leaderboard } from './views/Leaderboard'
 import { GameLog } from './views/GameLog'
 import { LogGame } from './views/LogGame'
+import { PlayerStats } from './views/PlayerStats'
 
 export default function App() {
   const [tab, setTab] = useState('leaderboard')
@@ -21,12 +22,9 @@ export default function App() {
   const refresh = () => setVersion((v) => v + 1)
   const showPlayer = (p: PlayerRef) => {
     setPlayer(p)
-    setTab('games')
+    setTab('stats')
   }
-  const changeTab = (nextTab: string) => {
-    if (tab === 'games' && nextTab !== 'games') setPlayer(null)
-    setTab(nextTab)
-  }
+  const changeTab = (nextTab: string) => setTab(nextTab)
 
   return (
     <div className="page">
@@ -43,6 +41,7 @@ export default function App() {
       <Tabs value={tab} onValueChange={changeTab}>
         <TabsList aria-label="Sections">
           <TabsTrigger value="leaderboard">Leaderboard</TabsTrigger>
+          <TabsTrigger value="stats">Stats</TabsTrigger>
           <TabsTrigger value="games">Games</TabsTrigger>
           <TabsTrigger value="log">Log a game</TabsTrigger>
         </TabsList>
@@ -50,13 +49,21 @@ export default function App() {
         <TabsContent value="leaderboard">
           <Leaderboard modes={modes} mode={mode} onModeChange={setMode} version={version} onPlayer={showPlayer} />
         </TabsContent>
+        <TabsContent value="stats">
+          <PlayerStats
+            modes={modes}
+            mode={mode}
+            onModeChange={setMode}
+            player={player}
+            onPlayerChange={setPlayer}
+            version={version}
+          />
+        </TabsContent>
         <TabsContent value="games">
           <GameLog
             modes={modes}
             mode={mode}
             onModeChange={setMode}
-            player={player}
-            onClearPlayer={() => setPlayer(null)}
             version={version}
             onChange={refresh}
           />

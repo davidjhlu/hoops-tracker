@@ -2,8 +2,7 @@ import { useEffect, useState } from 'react'
 import { Badge } from '@/components/arc/badge/badge'
 import { Alert } from '@/components/arc/alert/alert'
 import { api, formatDate, names, type Game, type Mode, type PlayerRef } from '../api'
-
-const MIN_MATCHUP_GAMES = 3
+import { getMatchupHighlights, summarizePlayerMatchups, type PairingRecord } from '../matchups'
 
 type Props = {
   player: PlayerRef
@@ -30,15 +29,6 @@ type RecentGamesState = {
   error: string
 }
 
-type PairingRecord = {
-  id: number
-  name: string
-  wins: number
-  losses: number
-  games: number
-  winPct: number
-}
-
 type MatchupHighlights = {
   best: PairingRecord | null
   lowest: PairingRecord | null
@@ -47,47 +37,6 @@ type MatchupHighlights = {
 type MatchupSummary = {
   teammates: MatchupHighlights
   opponents: MatchupHighlights
-}
-
-function getHighlights(records: Map<number, Omit<PairingRecord, 'games' | 'winPct'>>): MatchupHighlights {
-  const pairings = [...records.values()].map((record) => {
-    const games = record.wins + record.losses
-    return { ...record, games, winPct: record.wins / games }
-  }).filter((record) => record.games >= MIN_MATCHUP_GAMES)
-  const bestFirst = [...pairings].sort(
-    (a, b) => b.winPct - a.winPct || b.games - a.games || a.name.localeCompare(b.name),
-  )
-  const lowestFirst = [...pairings].sort(
-    (a, b) => a.winPct - b.winPct || b.games - a.games || a.name.localeCompare(b.name),
-  )
-  return { best: bestFirst[0] ?? null, lowest: lowestFirst[0] ?? null }
-}
-
-function summarizeMatchups(games: Game[], playerId: number): MatchupSummary {
-  const teammates = new Map<number, Omit<PairingRecord, 'games' | 'winPct'>>()
-  const opponents = new Map<number, Omit<PairingRecord, 'games' | 'winPct'>>()
-
-  const record = (records: typeof teammates, player: PlayerRef, won: boolean) => {
-    const current = records.get(player.id) ?? { id: player.id, name: player.name, wins: 0, losses: 0 }
-    if (won) current.wins += 1
-    else current.losses += 1
-    records.set(player.id, current)
-  }
-
-  for (const game of games) {
-    const playerOnA = game.teamA.some((member) => member.id === playerId)
-    const playerOnB = game.teamB.some((member) => member.id === playerId)
-    if (!playerOnA && !playerOnB) continue
-
-    const ownTeam = playerOnA ? game.teamA : game.teamB
-    const otherTeam = playerOnA ? game.teamB : game.teamA
-    const won = playerOnA ? game.scoreA > game.scoreB : game.scoreB > game.scoreA
-
-    for (const teammate of ownTeam) if (teammate.id !== playerId) record(teammates, teammate, won)
-    for (const opponent of otherTeam) record(opponents, opponent, won)
-  }
-
-  return { teammates: getHighlights(teammates), opponents: getHighlights(opponents) }
 }
 
 function MatchupGroup({
@@ -153,7 +102,13 @@ export function PlayerRecentGames({ player, mode, modes, version }: Props) {
   const modeLabel = (id: string) => modes.find((item) => item.id === id)?.label ?? id
   const games = state.key === requestKey ? state.games : null
   const error = state.key === requestKey ? state.error : ''
-  const matchups = games ? summarizeMatchups(games, player.id) : null
+  const pairings = games ? summarizePlayerMatchups(games, player.id) : null
+  const matchups: MatchupSummary | null = pairings
+    ? {
+        teammates: getMatchupHighlights(pairings.teammates),
+        opponents: getMatchupHighlights(pairings.opponents),
+      }
+    : null
   const recentGames = games?.slice(0, 5)
 
   return (

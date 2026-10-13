@@ -54,7 +54,7 @@ function CompactBoard({ rows, sort, emptyMessage, expandedId, mode, modes, versi
             <button
               type="button"
               className="board-row-expander"
-              aria-label={`${expandedId === row.id ? 'Hide' : 'Show'} recent games for ${row.name}`}
+              aria-label={`${expandedId === row.id ? 'Hide' : 'Show'} matchup details for ${row.name}`}
               aria-expanded={expandedId === row.id}
               aria-controls={expandedId === row.id ? `compact-player-games-${row.id}` : undefined}
               onClick={() => onToggle(row)}
