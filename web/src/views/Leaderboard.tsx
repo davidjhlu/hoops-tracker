@@ -100,7 +100,7 @@ function CompactBoard({ rows, sort, emptyMessage, onPlayer }: CompactBoardProps)
 }
 
 export function Leaderboard({ modes, mode, onModeChange, version, onPlayer }: Props) {
-  const [minGames, setMinGames] = useState('3')
+  const [minGames, setMinGames] = useState('1')
   const [mobileSort, setMobileSort] = useState<MobileSort>('rank')
   // Matches the width where the Arc table folds its rows and drops the column labels.
   const compact = useMediaQuery('(max-width: 619px)')
