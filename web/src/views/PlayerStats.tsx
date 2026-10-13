@@ -34,7 +34,8 @@ const MODE_TONES: Record<string, 'info' | 'success' | 'warning' | 'danger'> = {
 }
 
 const streakValue = (streak: number) => Math.abs(streak)
-const streakSuffix = (streak: number) => (streak > 0 ? ' wins' : streak < 0 ? ' losses' : '')
+const streakSuffix = (streak: number) =>
+  streak === 0 ? '' : ` ${streak > 0 ? 'win' : 'loss'}${Math.abs(streak) === 1 ? '' : 's'}`
 
 function MatchupTable({ title, pairings, playerName }: { title: string; pairings: PairingRecord[]; playerName: string }) {
   return (
