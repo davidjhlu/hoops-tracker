@@ -7,6 +7,7 @@ import { EmptyState } from '@/components/arc/empty-state/empty-state'
 import { Alert } from '@/components/arc/alert/alert'
 import { api, names, type Leader, type Mode, type PlayerRef, type PlayerStats, type Stats } from '../api'
 import { ModeFilter } from './ModeFilter'
+import { useMediaQuery } from '../useMediaQuery'
 
 type Props = {
   modes: Mode[]
@@ -20,6 +21,13 @@ type Row = PlayerStats & { rank: number }
 
 const MIN_GAME_OPTIONS = ['0', '1', '3', '5', '10'].map((v) => ({ value: v, label: v === '1' ? '1 game' : `${v} games` }))
 
+type MobileSort = 'rank' | 'avgPlusMinus' | 'elo'
+const SORT_OPTIONS: { value: MobileSort; label: string }[] = [
+  { value: 'rank', label: 'Win %' },
+  { value: 'avgPlusMinus', label: 'Avg +/-' },
+  { value: 'elo', label: 'Elo' },
+]
+
 const signed = (n: number | null, digits = 1) => {
   if (n === null) return '–'
   const s = n.toFixed(digits)
@@ -29,8 +37,47 @@ const fixed = (n: number | null) => (n === null ? '–' : n.toFixed(1))
 const streakLabel = (s: number) => (s > 0 ? `W${s}` : s < 0 ? `L${-s}` : '–')
 const leaderContext = (leader: Leader, fallback: string) => (leader ? leader.players.join(', ') : fallback)
 
+type CompactBoardProps = {
+  rows: Row[]
+  sort: MobileSort
+  emptyMessage: string
+  onPlayer: (player: PlayerRef) => void
+}
+
+function CompactBoard({ rows, sort, emptyMessage, onPlayer }: CompactBoardProps) {
+  if (!rows.length) return <p className="note board-empty">{emptyMessage}</p>
+  const sorted = sort === 'rank' ? rows : [...rows].sort((a, b) => b[sort] - a[sort] || a.rank - b.rank)
+  return (
+    <ol className="board" aria-label="Leaderboard">
+      {sorted.map((row) => (
+        <li key={row.id}>
+          <button type="button" className="board-row" onClick={() => onPlayer({ id: row.id, name: row.name })}>
+            <span className="board-rank">{row.rank}</span>
+            <span className="board-main">
+              <span className="board-name">{row.name}</span>
+              <span className="board-sub">
+                {signed(row.avgPlusMinus)} avg · {streakLabel(row.streak)} · Elo {row.elo}
+                {row.eloProvisional ? '*' : ''}
+              </span>
+            </span>
+            <span className="board-stat">
+              <span className="board-pct">{Math.round(row.winPct * 100)}%</span>
+              <span className="board-sub">
+                {row.wins}-{row.losses}
+              </span>
+            </span>
+          </button>
+        </li>
+      ))}
+    </ol>
+  )
+}
+
 export function Leaderboard({ modes, mode, onModeChange, version, onPlayer }: Props) {
   const [minGames, setMinGames] = useState('3')
+  const [mobileSort, setMobileSort] = useState<MobileSort>('rank')
+  // Matches the width where the Arc table folds its rows and drops the column labels.
+  const compact = useMediaQuery('(max-width: 619px)')
   const [stats, setStats] = useState<Stats | null>(null)
   const [error, setError] = useState('')
 
@@ -121,18 +168,35 @@ export function Leaderboard({ modes, mode, onModeChange, version, onPlayer }: Pr
             </div>
 
             <div className="toolbar">
+              {compact && (
+                <Select
+                  label="Sort by"
+                  options={SORT_OPTIONS}
+                  value={mobileSort}
+                  onValueChange={(v) => setMobileSort(v as MobileSort)}
+                />
+              )}
               <Select label="Minimum games" options={MIN_GAME_OPTIONS} value={minGames} onValueChange={setMinGames} />
             </div>
 
-            <SortableDataTable
-              rows={qualified}
-              rowKey={(row) => String(row.id)}
-              columns={columns}
-              caption="Leaderboard"
-              emptyMessage={`Nobody has played ${minGames} games yet. Lower the minimum to see everyone.`}
-              defaultSort={{ key: 'rank', direction: 'asc' }}
-              itemName={{ one: 'player', other: 'players' }}
-            />
+            {compact ? (
+              <CompactBoard
+                rows={qualified}
+                sort={mobileSort}
+                emptyMessage={`Nobody has played ${minGames} games yet. Lower the minimum to see everyone.`}
+                onPlayer={onPlayer}
+              />
+            ) : (
+              <SortableDataTable
+                rows={qualified}
+                rowKey={(row) => String(row.id)}
+                columns={columns}
+                caption="Leaderboard"
+                emptyMessage={`Nobody has played ${minGames} games yet. Lower the minimum to see everyone.`}
+                defaultSort={{ key: 'rank', direction: 'asc' }}
+                itemName={{ one: 'player', other: 'players' }}
+              />
+            )}
 
             {unqualified.length > 0 && (
               <p className="note">
