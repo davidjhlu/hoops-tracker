@@ -3,6 +3,8 @@ import { Badge } from '@/components/arc/badge/badge'
 import { Alert } from '@/components/arc/alert/alert'
 import { api, formatDate, names, type Game, type Mode, type PlayerRef } from '../api'
 
+const MIN_MATCHUP_GAMES = 3
+
 type Props = {
   player: PlayerRef
   mode: string
@@ -51,7 +53,7 @@ function getHighlights(records: Map<number, Omit<PairingRecord, 'games' | 'winPc
   const pairings = [...records.values()].map((record) => {
     const games = record.wins + record.losses
     return { ...record, games, winPct: record.wins / games }
-  })
+  }).filter((record) => record.games >= MIN_MATCHUP_GAMES)
   const bestFirst = [...pairings].sort(
     (a, b) => b.winPct - a.winPct || b.games - a.games || a.name.localeCompare(b.name),
   )
@@ -109,7 +111,7 @@ function MatchupGroup({
           </span>
         </>
       ) : (
-        <span className="player-matchup-empty">No pairings yet</span>
+        <span className="player-matchup-empty">No pairing with 3+ games yet</span>
       )}
     </div>
   )
@@ -167,6 +169,7 @@ export function PlayerRecentGames({ player, mode, modes, version }: Props) {
         <>
           <section className="player-matchup-summary">
             <h3>Matchups</h3>
+            <p className="note">Only pairings with 3 or more games are ranked.</p>
             <div className="player-matchup-groups">
               <MatchupGroup title="Teammates" relation="with" highlights={matchups.teammates} />
               <MatchupGroup title="Opponents" relation="against" highlights={matchups.opponents} />
