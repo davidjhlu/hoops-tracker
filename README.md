@@ -22,8 +22,9 @@ Locally, data lives in `data/hoops.db`. Set `DATA_DIR` to store it elsewhere and
 Only games are stored (mode, date, teams, score). Every stat is computed from that log, so stats can change without migrating data.
 
 - Win % and record, with a minimum games filter
-- Average +/- per game, average margin in wins and losses
-- Blowouts: the losing team scored half the winner's points or fewer
+- Average margin percentage per game, signed positive for wins and negative for losses. A game's margin percentage is (winner's score - loser's score) / winner's score.
+- Average win and loss margin percentages, plus each player's most decisive win and loss
+- Blowouts: the losing team scored half the winner's points or fewer. The biggest-blowout record ranks games by margin percentage, then raw point margin.
 - Current and longest win streaks
 - Elo: starts at 1000, K=32, team rating is the average of its players. It is calculated within the selected mode, or across all games when no mode is selected. Under 10 games is marked provisional.
 

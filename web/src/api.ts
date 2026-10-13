@@ -11,7 +11,7 @@ export type Game = {
   teamB: PlayerRef[]
 }
 
-export type GameRef = { gameId: number; margin: number; score: string; playedAt: string }
+export type GameRef = { gameId: number; margin: number; marginPct: number; score: string; playedAt: string }
 
 export type PlayerStats = {
   id: number
@@ -20,9 +20,9 @@ export type PlayerStats = {
   wins: number
   losses: number
   winPct: number
-  avgPlusMinus: number
-  avgWinMargin: number | null
-  avgLossMargin: number | null
+  avgMarginPct: number
+  avgWinMarginPct: number | null
+  avgLossMarginPct: number | null
   blowoutWins: number
   blowoutLosses: number
   biggestWin: GameRef | null
@@ -40,7 +40,7 @@ export type Stats = {
   leaderboard: PlayerStats[]
   records: {
     totalGames: number
-    biggestBlowouts: (Game & { margin: number })[]
+    biggestBlowouts: (Game & { margin: number; marginPct: number })[]
     longestWinStreak: Leader
     mostBlowoutWins: Leader
     mostBlowoutLosses: Leader

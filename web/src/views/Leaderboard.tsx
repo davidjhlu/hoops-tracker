@@ -21,21 +21,47 @@ type Row = PlayerStats & { rank: number }
 
 const MIN_GAME_OPTIONS = ['0', '1', '3', '5', '10'].map((v) => ({ value: v, label: v === '1' ? '1 game' : `${v} games` }))
 
-type MobileSort = 'rank' | 'avgPlusMinus' | 'elo'
+type MobileSort = 'rank' | 'avgMarginPct' | 'elo'
 const SORT_OPTIONS: { value: MobileSort; label: string }[] = [
   { value: 'rank', label: 'Win %' },
-  { value: 'avgPlusMinus', label: 'Avg +/-' },
+  { value: 'avgMarginPct', label: 'Avg margin' },
   { value: 'elo', label: 'Elo' },
 ]
 
-const signed = (n: number | null, digits = 1) => {
-  if (n === null) return '–'
-  const s = n.toFixed(digits)
-  return n > 0 ? `+${s}` : s
+const pct = (n: number | null) => (n === null ? '–' : `${Math.round(n * 100)}%`)
+const signedPct = (n: number) => {
+  const rounded = Math.round(n * 100)
+  return rounded > 0 ? `+${rounded}%` : `${rounded}%`
 }
-const fixed = (n: number | null) => (n === null ? '–' : n.toFixed(1))
 const streakLabel = (s: number) => (s > 0 ? `W${s}` : s < 0 ? `L${-s}` : '–')
 const leaderContext = (leader: Leader, fallback: string) => (leader ? leader.players.join(', ') : fallback)
+
+// MetricCard only takes a number, and a score like "11-0" is the point of this card.
+function BlowoutCard({ game }: { game: Stats['records']['biggestBlowouts'][number] | undefined }) {
+  if (!game) {
+    return (
+      <article className="score-card">
+        <span className="score-card-label">Biggest blowout</span>
+        <span className="score-card-value">–</span>
+        <p>No games yet</p>
+      </article>
+    )
+  }
+  const aWon = game.scoreA > game.scoreB
+  const winners = aWon ? game.teamA : game.teamB
+  const losers = aWon ? game.teamB : game.teamA
+  return (
+    <article className="score-card">
+      <span className="score-card-label">Biggest blowout</span>
+      <span className="score-card-value">
+        {Math.max(game.scoreA, game.scoreB)}-{Math.min(game.scoreA, game.scoreB)}
+      </span>
+      <p>
+        <span className="score-card-winners">{names(winners)}</span> over {names(losers)}
+      </p>
+    </article>
+  )
+}
 
 type CompactBoardProps = {
   rows: Row[]
@@ -56,7 +82,7 @@ function CompactBoard({ rows, sort, emptyMessage, onPlayer }: CompactBoardProps)
             <span className="board-main">
               <span className="board-name">{row.name}</span>
               <span className="board-sub">
-                {signed(row.avgPlusMinus)} avg · {streakLabel(row.streak)} · Elo {row.elo}
+                {signedPct(row.avgMarginPct)} margin · {streakLabel(row.streak)} · Elo {row.elo}
                 {row.eloProvisional ? '*' : ''}
               </span>
             </span>
@@ -115,9 +141,9 @@ export function Leaderboard({ modes, mode, onModeChange, version, onPlayer }: Pr
     { key: 'games', label: 'Games' },
     { key: 'wins', label: 'Record', numeric: true, render: (_, row) => `${row.wins}-${row.losses}` },
     { key: 'winPct', label: 'Win %', render: (v) => `${Math.round((v as number) * 100)}%` },
-    { key: 'avgPlusMinus', label: 'Avg +/-', render: (v) => signed(v as number) },
-    { key: 'avgWinMargin', label: 'Avg win by', numeric: true, render: (v) => fixed(v as number | null) },
-    { key: 'avgLossMargin', label: 'Avg loss by', numeric: true, render: (v) => fixed(v as number | null) },
+    { key: 'avgMarginPct', label: 'Avg margin', render: (v) => signedPct(v as number) },
+    { key: 'avgWinMarginPct', label: 'Avg win by', numeric: true, render: (v) => pct(v as number | null) },
+    { key: 'avgLossMarginPct', label: 'Avg loss by', numeric: true, render: (v) => pct(v as number | null) },
     { key: 'blowoutWins', label: 'Blowouts', render: (_, row) => `${row.blowoutWins} / ${row.blowoutLosses}` },
     { key: 'streak', label: 'Streak', render: (v) => streakLabel(v as number) },
     { key: 'elo', label: 'Elo', render: (v, row) => `${v}${row.eloProvisional ? '*' : ''}` },
@@ -155,16 +181,7 @@ export function Leaderboard({ modes, mode, onModeChange, version, onPlayer }: Pr
                 value={records.mostBlowoutWins?.value ?? 0}
                 context={leaderContext(records.mostBlowoutWins, 'No blowouts yet')}
               />
-              <MetricCard
-                label="Biggest margin"
-                value={topBlowout?.margin ?? 0}
-                suffix=" pts"
-                context={
-                  topBlowout
-                    ? `${names(topBlowout.scoreA > topBlowout.scoreB ? topBlowout.teamA : topBlowout.teamB)}, ${Math.max(topBlowout.scoreA, topBlowout.scoreB)}-${Math.min(topBlowout.scoreA, topBlowout.scoreB)}`
-                    : 'No games yet'
-                }
-              />
+              <BlowoutCard game={topBlowout} />
             </div>
 
             <div className="toolbar">
@@ -204,8 +221,10 @@ export function Leaderboard({ modes, mode, onModeChange, version, onPlayer }: Pr
               </p>
             )}
             <p className="note">
-              A blowout is a game where the losing team scored half the winner's points or fewer. Elo starts at 1000 and is
-              calculated within the selected mode. An asterisk means fewer than 10 games, so the rating is still settling.
+              Margin is the gap as a share of the winning score, so games to 11 and to 15 compare fairly: 15-5 is 67% and
+              11-0 is 100%. Avg margin counts wins as plus and losses as minus. A blowout is a margin of 50% or more. Elo
+              starts at 1000 and is calculated within the selected mode. An asterisk means fewer than 10 games, so the
+              rating is still settling.
             </p>
           </>
         )

@@ -2,10 +2,20 @@ export const ELO_START = 1000;
 export const ELO_K = 32;
 export const ELO_PROVISIONAL_GAMES = 10;
 
-// Score-scale independent, so it works whether a mode plays to 11, 15, or 21.
-export function isBlowout(winnerScore, loserScore) {
-  return loserScore * 2 <= winnerScore;
+/**
+ * Margin as a share of the winning score, so games to 11 and to 15 compare fairly:
+ * 11-0 is 1.0, 15-3 is 0.8, 11-9 is about 0.18.
+ */
+export function marginPct(winnerScore, loserScore) {
+  return winnerScore > 0 ? (winnerScore - loserScore) / winnerScore : 0;
 }
+
+export function isBlowout(winnerScore, loserScore) {
+  return marginPct(winnerScore, loserScore) >= 0.5;
+}
+
+/** Orders by margin %, then raw margin, so 11-0 beats 15-3 and 15-0 beats 11-0. */
+const moreLopsided = (a, b) => b.marginPct - a.marginPct || b.margin - a.margin;
 
 function blankPlayer(p) {
   return {
@@ -14,10 +24,9 @@ function blankPlayer(p) {
     games: 0,
     wins: 0,
     losses: 0,
-    pointsFor: 0,
-    pointsAgainst: 0,
-    winMarginTotal: 0,
-    lossMarginTotal: 0,
+    marginPctTotal: 0,
+    winMarginPctTotal: 0,
+    lossMarginPctTotal: 0,
     biggestWin: null,
     worstLoss: null,
     blowoutWins: 0,
@@ -42,8 +51,11 @@ export function computeStats(games, { minGames = 0 } = {}) {
   for (const g of games) {
     if (g.scoreA === g.scoreB || !g.teamA.length || !g.teamB.length) continue;
     const aWon = g.scoreA > g.scoreB;
-    const margin = Math.abs(g.scoreA - g.scoreB);
-    const blowout = isBlowout(Math.max(g.scoreA, g.scoreB), Math.min(g.scoreA, g.scoreB));
+    const winner = Math.max(g.scoreA, g.scoreB);
+    const loser = Math.min(g.scoreA, g.scoreB);
+    const margin = winner - loser;
+    const pct = marginPct(winner, loser);
+    const blowout = isBlowout(winner, loser);
 
     const teamA = g.teamA.map(get);
     const teamB = g.teamB.map(get);
@@ -54,22 +66,22 @@ export function computeStats(games, { minGames = 0 } = {}) {
     const apply = (team, won, ptsFor, ptsAgainst, eloDelta) => {
       for (const p of team) {
         p.games += 1;
-        p.pointsFor += ptsFor;
-        p.pointsAgainst += ptsAgainst;
         p.elo += eloDelta;
-        const ref = { gameId: g.id, margin, score: `${ptsFor}-${ptsAgainst}`, playedAt: g.playedAt };
+        const ref = { gameId: g.id, margin, marginPct: pct, score: `${ptsFor}-${ptsAgainst}`, playedAt: g.playedAt };
         if (won) {
           p.wins += 1;
-          p.winMarginTotal += margin;
+          p.marginPctTotal += pct;
+          p.winMarginPctTotal += pct;
           if (blowout) p.blowoutWins += 1;
-          if (!p.biggestWin || margin > p.biggestWin.margin) p.biggestWin = ref;
+          if (!p.biggestWin || moreLopsided(ref, p.biggestWin) < 0) p.biggestWin = ref;
           p.streak = p.streak > 0 ? p.streak + 1 : 1;
           p.longestWinStreak = Math.max(p.longestWinStreak, p.streak);
         } else {
           p.losses += 1;
-          p.lossMarginTotal += margin;
+          p.marginPctTotal -= pct;
+          p.lossMarginPctTotal += pct;
           if (blowout) p.blowoutLosses += 1;
-          if (!p.worstLoss || margin > p.worstLoss.margin) p.worstLoss = ref;
+          if (!p.worstLoss || moreLopsided(ref, p.worstLoss) < 0) p.worstLoss = ref;
           p.streak = p.streak < 0 ? p.streak - 1 : -1;
         }
       }
@@ -85,9 +97,9 @@ export function computeStats(games, { minGames = 0 } = {}) {
     wins: p.wins,
     losses: p.losses,
     winPct: p.games ? p.wins / p.games : 0,
-    avgPlusMinus: p.games ? (p.pointsFor - p.pointsAgainst) / p.games : 0,
-    avgWinMargin: p.wins ? p.winMarginTotal / p.wins : null,
-    avgLossMargin: p.losses ? p.lossMarginTotal / p.losses : null,
+    avgMarginPct: p.games ? p.marginPctTotal / p.games : 0,
+    avgWinMarginPct: p.wins ? p.winMarginPctTotal / p.wins : null,
+    avgLossMarginPct: p.losses ? p.lossMarginPctTotal / p.losses : null,
     blowoutWins: p.blowoutWins,
     blowoutLosses: p.blowoutLosses,
     biggestWin: p.biggestWin,
@@ -104,7 +116,7 @@ export function computeStats(games, { minGames = 0 } = {}) {
       b.qualified - a.qualified ||
       b.winPct - a.winPct ||
       b.wins - a.wins ||
-      b.avgPlusMinus - a.avgPlusMinus ||
+      b.avgMarginPct - a.avgMarginPct ||
       a.name.localeCompare(b.name)
   );
 
@@ -114,8 +126,12 @@ export function computeStats(games, { minGames = 0 } = {}) {
 function computeRecords(games, leaderboard) {
   const decided = games.filter((g) => g.scoreA !== g.scoreB);
   const biggestBlowouts = decided
-    .map((g) => ({ ...g, margin: Math.abs(g.scoreA - g.scoreB) }))
-    .sort((a, b) => b.margin - a.margin || b.id - a.id)
+    .map((g) => {
+      const winner = Math.max(g.scoreA, g.scoreB);
+      const loser = Math.min(g.scoreA, g.scoreB);
+      return { ...g, margin: winner - loser, marginPct: marginPct(winner, loser) };
+    })
+    .sort((a, b) => moreLopsided(a, b) || b.id - a.id)
     .slice(0, 5);
 
   const top = (key) => {
