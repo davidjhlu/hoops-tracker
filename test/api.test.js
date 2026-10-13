@@ -80,6 +80,24 @@ test('a failed insert rolls back the whole game', async () => {
   assert.ok(!(await listPlayers(db)).some((p) => p.name === 'Zed'), 'new players are rolled back too');
 });
 
+test('adds a player without a game', async () => {
+  const add = (name) =>
+    fetch(`${base}/api/players`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+
+  const res = await add('  Rookie   Smith ');
+  assert.equal(res.status, 201);
+  assert.equal((await res.json()).name, 'Rookie Smith');
+
+  const again = await (await add('rookie smith')).json();
+  assert.equal(again.name, 'Rookie Smith', 'keeps the first spelling');
+
+  const players = await (await fetch(`${base}/api/players`)).json();
+  assert.equal(players.filter((p) => p.name === 'Rookie Smith').length, 1);
+
+  assert.equal((await add('')).status, 400);
+  assert.equal((await add('x'.repeat(31))).status, 400);
+});
+
 test('accepts the Vercel rewrite path', async () => {
   const res = await fetch(`${base}/api/handler?path=config`);
   assert.equal(res.status, 200);

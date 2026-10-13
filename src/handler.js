@@ -2,7 +2,7 @@ import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { openDb, listGames, listPlayers, insertGame, deleteGame } from './db.js';
+import { openDb, listGames, listPlayers, addPlayer, insertGame, deleteGame } from './db.js';
 import { computeStats } from './stats.js';
 import { MODES, MODE_IDS } from './modes.js';
 
@@ -48,12 +48,23 @@ async function readJson(req) {
 
 function cleanTeam(value, label) {
   if (!Array.isArray(value)) throw new HttpError(400, `${label} must be a list of names`);
-  const names = value.map((n) => String(n).trim().replace(/\s+/g, ' ')).filter(Boolean);
+  const names = value.map(normalizeName).filter(Boolean);
   if (!names.length) throw new HttpError(400, `${label} needs at least one player`);
-  for (const n of names) {
-    if (n.length > MAX_NAME) throw new HttpError(400, `Name too long: ${n.slice(0, 40)}`);
-  }
+  for (const n of names) checkNameLength(n);
   return names;
+}
+
+const normalizeName = (value) => String(value ?? '').trim().replace(/\s+/g, ' ');
+
+function checkNameLength(name) {
+  if (name.length > MAX_NAME) throw new HttpError(400, `Name too long: ${name.slice(0, 40)}`);
+}
+
+function validatePlayerName(body) {
+  const name = normalizeName(body.name);
+  if (!name) throw new HttpError(400, 'Name is required');
+  checkNameLength(name);
+  return name;
 }
 
 function validateGame(body) {
@@ -124,6 +135,10 @@ export function createHandler(getDb) {
         const db = await getDb();
         if (req.method === 'GET' && pathname === '/api/players') {
           return sendJson(res, 200, await listPlayers(db));
+        }
+        if (req.method === 'POST' && pathname === '/api/players') {
+          const name = validatePlayerName(await readJson(req));
+          return sendJson(res, 201, await addPlayer(db, name));
         }
         if (req.method === 'GET' && pathname === '/api/games') {
           const games = filterGames(await listGames(db), searchParams).reverse();

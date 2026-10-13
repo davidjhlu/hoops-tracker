@@ -63,6 +63,13 @@ export async function listGames(db) {
   return [...byId.values()];
 }
 
+/** Returns the stored player, keeping the existing spelling if the name differs only by case. */
+export async function addPlayer(db, name) {
+  await db.execute({ sql: 'INSERT INTO players (name) VALUES (?) ON CONFLICT (name) DO NOTHING', args: [name] });
+  const { rows } = await db.execute({ sql: 'SELECT id, name FROM players WHERE name = ?', args: [name] });
+  return { id: rows[0].id, name: rows[0].name };
+}
+
 async function getOrCreatePlayer(tx, name) {
   await tx.execute({ sql: 'INSERT INTO players (name) VALUES (?) ON CONFLICT (name) DO NOTHING', args: [name] });
   const { rows } = await tx.execute({ sql: 'SELECT id FROM players WHERE name = ?', args: [name] });

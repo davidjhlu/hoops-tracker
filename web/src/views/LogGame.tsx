@@ -14,9 +14,12 @@ const sameName = (a: string, b: string) => a.toLowerCase() === b.toLowerCase()
 
 export function LogGame({ modes, version, onSaved }: Props) {
   const [mode, setMode] = useState('hc3')
-  const [date, setDate] = useState<Date | undefined>(() => new Date())
+  const [today] = useState(() => new Date())
+  const [date, setDate] = useState<Date | undefined>(today)
   const [pool, setPool] = useState<string[]>([])
   const [newName, setNewName] = useState('')
+  const [adding, setAdding] = useState(false)
+  const [addError, setAddError] = useState('')
   const [teamA, setTeamA] = useState<string[]>([])
   const [teamB, setTeamB] = useState<string[]>([])
   const [scoreA, setScoreA] = useState(0)
@@ -52,11 +55,22 @@ export function LogGame({ modes, version, onSaved }: Props) {
     return undefined
   })()
 
-  const addPlayer = () => {
+  const addPlayer = async () => {
     const n = newName.trim().replace(/\s+/g, ' ')
-    if (!n || nameError) return
-    setPool((prev) => [...prev, n].sort((a, b) => a.localeCompare(b)))
-    setNewName('')
+    if (!n || nameError || adding) return
+    setAdding(true)
+    setAddError('')
+    try {
+      const player = await api.addPlayer(n)
+      setPool((prev) =>
+        prev.some((p) => sameName(p, player.name)) ? prev : [...prev, player.name].sort((a, b) => a.localeCompare(b)),
+      )
+      setNewName('')
+    } catch (err) {
+      setAddError((err as Error).message)
+    } finally {
+      setAdding(false)
+    }
   }
 
   const toOptions = (exclude: string[]) =>
@@ -93,7 +107,7 @@ export function LogGame({ modes, version, onSaved }: Props) {
           value={mode}
           onValueChange={setMode}
         />
-        <DatePicker label="Date" value={date} onChange={setDate} maxDate={new Date()} showToday />
+        <DatePicker label="Date" value={date} onChange={setDate} maxDate={today} showToday />
       </div>
 
       <div className="row add-player">
@@ -103,8 +117,11 @@ export function LogGame({ modes, version, onSaved }: Props) {
           value={newName}
           maxLength={40}
           autoComplete="off"
-          error={nameError}
-          onChange={(e) => setNewName(e.target.value)}
+          error={nameError ?? (addError || undefined)}
+          onChange={(e) => {
+            setNewName(e.target.value)
+            setAddError('')
+          }}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               e.preventDefault()
@@ -112,7 +129,13 @@ export function LogGame({ modes, version, onSaved }: Props) {
             }
           }}
         />
-        <Button type="button" variant="secondary" onClick={addPlayer} disabled={!newName.trim() || !!nameError}>
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={addPlayer}
+          loading={adding}
+          disabled={!newName.trim() || !!nameError}
+        >
           Add
         </Button>
       </div>

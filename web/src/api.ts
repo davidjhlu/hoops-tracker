@@ -73,6 +73,12 @@ const query = (params: Record<string, string | number | undefined>) => {
 export const api = {
   config: () => request<{ modes: Mode[] }>('/api/config'),
   players: () => request<PlayerRef[]>('/api/players'),
+  addPlayer: (name: string) =>
+    request<PlayerRef>('/api/players', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    }),
   games: (mode?: string, player?: number) => request<Game[]>(`/api/games${query({ mode, player })}`),
   stats: (mode?: string, minGames?: number) => request<Stats>(`/api/stats${query({ mode, minGames })}`),
   addGame: (game: NewGame) =>
