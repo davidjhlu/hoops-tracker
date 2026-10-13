@@ -1,0 +1,20 @@
+{
+  "name": "hoops-tracker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Game log and leaderboard for pickup basketball runs",
+  "type": "module",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "node src/start.js",
+    "build": "npm --prefix web install && npm --prefix web run build",
+    "dev": "node --watch src/start.js",
+    "dev:web": "npm --prefix web run dev",
+    "test": "node --test test/"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.18.0"
+  }
+}
