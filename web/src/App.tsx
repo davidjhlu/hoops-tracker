@@ -23,6 +23,10 @@ export default function App() {
     setPlayer(p)
     setTab('games')
   }
+  const changeTab = (nextTab: string) => {
+    if (tab === 'games' && nextTab !== 'games') setPlayer(null)
+    setTab(nextTab)
+  }
 
   return (
     <div className="page">
@@ -36,7 +40,7 @@ export default function App() {
         </Alert>
       )}
 
-      <Tabs value={tab} onValueChange={setTab}>
+      <Tabs value={tab} onValueChange={changeTab}>
         <TabsList aria-label="Sections">
           <TabsTrigger value="leaderboard">Leaderboard</TabsTrigger>
           <TabsTrigger value="games">Games</TabsTrigger>
