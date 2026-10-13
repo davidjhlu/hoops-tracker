@@ -79,7 +79,7 @@ function validateGame(body) {
   const scoreA = Number(body.scoreA);
   const scoreB = Number(body.scoreB);
   for (const s of [scoreA, scoreB]) {
-    if (!Number.isInteger(s) || s < 0 || s > 300) throw new HttpError(400, 'Scores must be whole numbers');
+    if (!Number.isInteger(s) || s < 0 || s > 50) throw new HttpError(400, 'Scores must be whole numbers, max 50, min 0');
   }
   if (scoreA === scoreB) throw new HttpError(400, 'Games cannot end in a tie');
 
