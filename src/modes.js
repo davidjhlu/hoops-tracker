@@ -1,9 +1,8 @@
 export const MODES = [
-  { id: 'hc2', label: 'Halfcourt 2v2' },
-  { id: 'hc3', label: 'Halfcourt 3v3' },
-  { id: 'hc4', label: 'Halfcourt 4v4' },
-  { id: 'hc5', label: 'Halfcourt 5v5' },
-  { id: 'fc5', label: 'Fullcourt 5v5' },
+  { id: 'hc3', label: 'halfcourt 3s' },
+  { id: 'hc4', label: 'halfcourt 4s' },
+  { id: 'hc5', label: 'halfcourt 5s' },
+  { id: 'fc5', label: 'fullcourt 5s' },
 ];
 
 export const MODE_IDS = new Set(MODES.map((m) => m.id));
