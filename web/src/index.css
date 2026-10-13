@@ -196,6 +196,7 @@ body {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
+  white-space: nowrap;
 }
 
 .leader-rank svg {

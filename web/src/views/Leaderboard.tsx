@@ -127,7 +127,7 @@ export function Leaderboard({ modes, mode, onModeChange, version, onPlayer }: Pr
     {
       key: 'rank',
       label: '#',
-      width: 58,
+      width: 72,
       render: (value, row) => (
         <span className={`leader-rank ${expandedId === row.id ? 'is-expanded' : ''}`}>
           {value as number}
