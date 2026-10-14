@@ -81,11 +81,11 @@ function playerWon(game: Game, playerId: number) {
 export function PlayerStats({ modes, mode, onModeChange, player, onPlayerChange, version }: Props) {
   const [playersState, setPlayersState] = useState<KeyedResult<PlayerRef[]>>({ key: '', value: null, error: '' })
   const [statsState, setStatsState] = useState<KeyedResult<Stats>>({ key: '', value: null, error: '' })
-  const [gamesState, setGamesState] = useState<KeyedResult<Game[]>>({ key: '', value: null, error: '' })
+  const [runGamesState, setRunGamesState] = useState<KeyedResult<Game[]>>({ key: '', value: null, error: '' })
   const [pageState, setPageState] = useState({ key: '', value: 1 })
   const statsKey = `${mode}:${version}`
   const gamesKey = `${mode}:${player?.id ?? ''}:${version}`
-  const playerId = player?.id
+  const runGamesKey = `${mode}:${version}`
 
   useEffect(() => {
     let live = true
@@ -108,30 +108,32 @@ export function PlayerStats({ modes, mode, onModeChange, player, onPlayerChange,
   }, [mode, statsKey])
 
   useEffect(() => {
-    if (playerId === undefined) return
-
     let live = true
-    api.games(mode, playerId)
+    api.games(mode)
       .then((value) => {
         if (!live) return
-        setGamesState({
-          key: gamesKey,
+        setRunGamesState({
+          key: runGamesKey,
           value: value.sort((a, b) => b.playedAt.localeCompare(a.playedAt) || b.id - a.id),
           error: '',
         })
       })
-      .catch((e: Error) => live && setGamesState({ key: gamesKey, value: null, error: e.message }))
+      .catch((e: Error) => live && setRunGamesState({ key: runGamesKey, value: null, error: e.message }))
     return () => {
       live = false
     }
-  }, [mode, playerId, gamesKey])
+  }, [mode, runGamesKey])
 
   const players = playersState.key === 'players' ? playersState.value ?? [] : []
   const stats = statsState.key === statsKey ? statsState.value : null
-  const games = gamesState.key === gamesKey ? gamesState.value : null
-  const loadingGames = Boolean(player) && gamesState.key !== gamesKey
+  const runGames = runGamesState.key === runGamesKey ? runGamesState.value : null
   const statsError = statsState.key === statsKey ? statsState.error : ''
-  const gamesError = gamesState.key === gamesKey ? gamesState.error : ''
+  const runGamesError = runGamesState.key === runGamesKey ? runGamesState.error : ''
+  const games = runGames && player
+    ? runGames.filter((game) => [...game.teamA, ...game.teamB].some((member) => member.id === player.id))
+    : null
+  const loadingGames = Boolean(player) && runGamesState.key !== runGamesKey && !runGamesError
+  const gamesError = runGamesError
   const playerStats = stats?.leaderboard.find((entry) => entry.id === player?.id)
   const matchups = games && player ? summarizePlayerMatchups(games, player.id) : null
   const pageCount = Math.max(1, Math.ceil((games?.length ?? 0) / PAGE_SIZE))
@@ -153,6 +155,11 @@ export function PlayerStats({ modes, mode, onModeChange, player, onPlayerChange,
       {statsError && (
         <Alert tone="danger" title="Couldn't load player stats">
           {statsError}
+        </Alert>
+      )}
+      {runGamesError && (
+        <Alert tone="danger" title="Couldn't load run history">
+          {runGamesError}
         </Alert>
       )}
       <div className="toolbar stats-toolbar">
@@ -203,7 +210,10 @@ export function PlayerStats({ modes, mode, onModeChange, player, onPlayerChange,
             <p className="note">{stats ? 'No games for this player in the selected mode yet.' : 'Loading player stats…'}</p>
           )}
 
-          {games && <RunAttendanceCalendar player={player} games={games} mode={mode} modes={modes} />}
+          {games && runGames && (
+            <RunAttendanceCalendar player={player} playerGames={games} runGames={runGames} mode={mode} modes={modes} />
+          )}
+          {games && !runGames && !runGamesError && <p className="note">Loading run attendance…</p>}
 
           {matchups && (
             <section className="player-matchup-summary">

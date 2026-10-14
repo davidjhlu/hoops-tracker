@@ -5,7 +5,8 @@ import { formatDate, names, type Game, type Mode, type PlayerRef } from '../api'
 
 type Props = {
   player: PlayerRef
-  games: Game[]
+  runGames: Game[]
+  playerGames: Game[]
   mode: string
   modes: Mode[]
 }
@@ -55,11 +56,11 @@ function gameWon(game: Game, playerId: number) {
   return onA ? game.scoreA > game.scoreB : game.scoreB > game.scoreA
 }
 
-export function RunAttendanceCalendar({ player, games, mode, modes }: Props) {
+export function RunAttendanceCalendar({ player, runGames, playerGames, mode, modes }: Props) {
   const [monthSelection, setMonthSelection] = useState('')
   const [selectedDay, setSelectedDay] = useState<{ key: string; date: string } | null>(null)
-  const options = buildMonthOptions(games)
-  const newestGameMonth = games.reduce((latest, game) => {
+  const options = buildMonthOptions(runGames)
+  const newestGameMonth = runGames.reduce((latest, game) => {
     const value = game.playedAt.slice(0, 7)
     return value > latest ? value : latest
   }, '')
@@ -68,15 +69,19 @@ export function RunAttendanceCalendar({ player, games, mode, modes }: Props) {
     options.find((option) => option.value === newestGameMonth)?.value ??
     options[0]?.value ??
     currentMonthKey()
-  const selectedMonthKey = `${player.id}:${month}`
+  const selectedMonthKey = `${player.id}:${mode}:${month}`
 
-  const gamesByDate = new Map<string, Game[]>()
-  for (const game of games) {
+  const runGamesByDate = new Map<string, Game[]>()
+  for (const game of runGames) {
     const date = game.playedAt.slice(0, 10)
-    const sameDay = gamesByDate.get(date) ?? []
+    const sameDay = runGamesByDate.get(date) ?? []
     sameDay.push(game)
-    gamesByDate.set(date, sameDay)
+    runGamesByDate.set(date, sameDay)
   }
+  const playerDates = new Set(playerGames.map((game) => game.playedAt.slice(0, 10)))
+  const runDates = [...runGamesByDate.keys()].sort((a, b) => b.localeCompare(a))
+  const latestRuns = runDates.slice(0, 10)
+  const attendedLatestRuns = latestRuns.filter((date) => playerDates.has(date)).length
 
   const [year, monthNumber] = month.split('-').map(Number)
   const firstWeekday = new Date(Date.UTC(year, monthNumber - 1, 1)).getUTCDay()
@@ -87,10 +92,11 @@ export function RunAttendanceCalendar({ player, games, mode, modes }: Props) {
   ]
   while (days.length % 7 !== 0) days.push(null)
   const weeks = Array.from({ length: days.length / 7 }, (_, index) => days.slice(index * 7, (index + 1) * 7))
-  const monthDates = [...gamesByDate.keys()].filter((date) => date.startsWith(month))
-  const attendedRuns = monthDates.length
+  const monthRunDates = runDates.filter((date) => date.startsWith(month))
+  const attendedRuns = monthRunDates.filter((date) => playerDates.has(date)).length
   const detailDate = selectedDay?.key === selectedMonthKey ? selectedDay.date : ''
-  const detailGames = detailDate ? gamesByDate.get(detailDate) ?? [] : []
+  const detailGames = detailDate ? runGamesByDate.get(detailDate) ?? [] : []
+  const attendedDetailRun = detailDate ? playerDates.has(detailDate) : false
   const modeLabel = (id: string) => modes.find((item) => item.id === id)?.label ?? id
 
   return (
@@ -98,7 +104,7 @@ export function RunAttendanceCalendar({ player, games, mode, modes }: Props) {
       <header className="run-attendance-header">
         <div>
           <h3>Runs attended</h3>
-          <p className="note">One mark per date with a logged game.</p>
+          <p className="note">Each recorded run is one date; filled means attended, outlined means missed.</p>
         </div>
         <Select
           label="Month"
@@ -110,6 +116,11 @@ export function RunAttendanceCalendar({ player, games, mode, modes }: Props) {
 
       <p className="run-attendance-count">
         {attendedRuns} {attendedRuns === 1 ? 'run' : 'runs'} attended in {monthLabel(month)}
+      </p>
+      <p className="run-attendance-recent-count">
+        {latestRuns.length > 0
+          ? `${attendedLatestRuns} of the last ${latestRuns.length} ${latestRuns.length === 1 ? 'run' : 'runs'} attended`
+          : 'No runs recorded yet'}
       </p>
 
       <div className="run-calendar" role="group" aria-label={`Run attendance for ${monthLabel(month)}`}>
@@ -126,18 +137,24 @@ export function RunAttendanceCalendar({ player, games, mode, modes }: Props) {
               {week.map((day, dayIndex) => {
                 if (day === null) return <span className="run-calendar-blank" aria-hidden="true" key={dayIndex} />
                 const date = `${month}-${String(day).padStart(2, '0')}`
-                const runGames = gamesByDate.get(date) ?? []
-                const attended = runGames.length > 0
-                const dayLabel = `${formatDate(date)}: ${attended ? `attended, ${runGames.length} ${runGames.length === 1 ? 'game' : 'games'} logged` : 'no games logged'}`
+                const dayGames = runGamesByDate.get(date) ?? []
+                const hasRun = dayGames.length > 0
+                const attended = hasRun && playerDates.has(date)
+                const missed = hasRun && !attended
+                const dayLabel = `${formatDate(date)}: ${
+                  !hasRun
+                    ? 'no run recorded'
+                    : `${attended ? 'attended' : 'run recorded, not attended'}, ${dayGames.length} ${dayGames.length === 1 ? 'game' : 'games'}`
+                }`
                 return (
                   <div className="run-calendar-cell" key={date}>
                     <button
                       type="button"
-                      className={`run-calendar-day ${attended ? 'is-attended' : ''} ${detailDate === date ? 'is-selected' : ''}`}
+                      className={`run-calendar-day ${attended ? 'is-attended' : ''} ${missed ? 'is-missed' : ''} ${detailDate === date ? 'is-selected' : ''}`}
                       aria-label={dayLabel}
                       aria-pressed={detailDate === date}
                       title={dayLabel}
-                      disabled={!attended}
+                      disabled={!hasRun}
                       onClick={() => setSelectedDay({ key: selectedMonthKey, date })}
                     >
                       {day}
@@ -150,21 +167,22 @@ export function RunAttendanceCalendar({ player, games, mode, modes }: Props) {
         </div>
       </div>
 
-      <div className="run-calendar-legend" aria-label="Calendar legend">
-        <span><i className="run-calendar-swatch is-attended" aria-hidden="true" /> Run attended</span>
-        <span><i className="run-calendar-swatch" aria-hidden="true" /> No run recorded</span>
-      </div>
-
       {detailGames.length > 0 && (
         <section className="run-attendance-details" aria-label={`Games on ${formatDate(detailDate)}`}>
-          <h4>{formatDate(detailDate)} · {detailGames.length} {detailGames.length === 1 ? 'game' : 'games'}</h4>
+          <h4>
+            {formatDate(detailDate)} · {attendedDetailRun ? 'Attended' : 'Not attended'} · {detailGames.length}{' '}
+            {detailGames.length === 1 ? 'game' : 'games'}
+          </h4>
           <ul>
             {detailGames.map((game) => {
-              const won = gameWon(game, player.id)
+              const played = [...game.teamA, ...game.teamB].some((member) => member.id === player.id)
+              const won = played && gameWon(game, player.id)
               return (
                 <li key={game.id}>
                   <div className="run-attendance-game-meta">
-                    <Badge size="sm" tone={won ? 'success' : 'danger'}>{won ? 'Win' : 'Loss'}</Badge>
+                    <Badge size="sm" tone={!played ? 'neutral' : won ? 'success' : 'danger'}>
+                      {!played ? 'Not in game' : won ? 'Win' : 'Loss'}
+                    </Badge>
                     {!mode && <Badge size="sm" tone="neutral">{modeLabel(game.mode)}</Badge>}
                   </div>
                   <span>{names(game.teamA)}</span>
