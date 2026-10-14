@@ -22,18 +22,11 @@ type Row = PlayerStats & { rank: number }
 
 const MIN_GAME_OPTIONS = ['0', '1', '3', '5', '10'].map((v) => ({ value: v, label: v === '1' ? '1 game' : `${v} games` }))
 
-type MobileSort = 'rank' | 'elo'
-const SORT_OPTIONS: { value: MobileSort; label: string }[] = [
-  { value: 'rank', label: 'Win %' },
-  { value: 'elo', label: 'Elo' },
-]
-
 const streakLabel = (s: number) => (s > 0 ? `W${s}` : s < 0 ? `L${-s}` : '–')
 const leaderContext = (leader: Leader, fallback: string) => (leader ? leader.players.join(', ') : fallback)
 
 type CompactBoardProps = {
   rows: Row[]
-  sort: MobileSort
   emptyMessage: string
   expandedId: number | null
   mode: string
@@ -43,12 +36,11 @@ type CompactBoardProps = {
   onPlayer: (player: PlayerRef) => void
 }
 
-function CompactBoard({ rows, sort, emptyMessage, expandedId, mode, modes, version, onToggle, onPlayer }: CompactBoardProps) {
+function CompactBoard({ rows, emptyMessage, expandedId, mode, modes, version, onToggle, onPlayer }: CompactBoardProps) {
   if (!rows.length) return <p className="note board-empty">{emptyMessage}</p>
-  const sorted = sort === 'rank' ? rows : [...rows].sort((a, b) => b[sort] - a[sort] || a.rank - b.rank)
   return (
     <ol className="board" aria-label="Leaderboard">
-      {sorted.map((row) => (
+      {rows.map((row) => (
         <li key={row.id} className="board-item">
           <div className="board-row-shell">
             <button
@@ -69,8 +61,7 @@ function CompactBoard({ rows, sort, emptyMessage, expandedId, mode, modes, versi
                 {row.name}
               </button>
               <span className="board-sub">
-                {streakLabel(row.streak)} · Elo {row.elo}
-                {row.eloProvisional ? '*' : ''}
+                {streakLabel(row.streak)}
               </span>
             </span>
             <span className="board-stat">
@@ -96,7 +87,6 @@ function CompactBoard({ rows, sort, emptyMessage, expandedId, mode, modes, versi
 
 export function Leaderboard({ modes, mode, onModeChange, version, onPlayer }: Props) {
   const [minGames, setMinGames] = useState('1')
-  const [mobileSort, setMobileSort] = useState<MobileSort>('rank')
   const [expandedId, setExpandedId] = useState<number | null>(null)
   // Matches the width where the Arc table folds its rows and drops the column labels.
   const compact = useMediaQuery('(max-width: 619px)')
@@ -148,7 +138,6 @@ export function Leaderboard({ modes, mode, onModeChange, version, onPlayer }: Pr
     { key: 'wins', label: 'Record', numeric: true, render: (_, row) => `${row.wins}-${row.losses}` },
     { key: 'winPct', label: 'Win %', render: (v) => `${Math.round((v as number) * 100)}%` },
     { key: 'streak', label: 'Streak', render: (v) => streakLabel(v as number) },
-    { key: 'elo', label: 'Elo', render: (v, row) => `${v}${row.eloProvisional ? '*' : ''}` },
   ]
 
   return (
@@ -181,21 +170,12 @@ export function Leaderboard({ modes, mode, onModeChange, version, onPlayer }: Pr
             </div>
 
             <div className="toolbar">
-              {compact && (
-                <Select
-                  label="Sort by"
-                  options={SORT_OPTIONS}
-                  value={mobileSort}
-                  onValueChange={(v) => setMobileSort(v as MobileSort)}
-                />
-              )}
               <Select label="Minimum games" options={MIN_GAME_OPTIONS} value={minGames} onValueChange={setMinGames} />
             </div>
 
             {compact ? (
               <CompactBoard
                 rows={qualified}
-                sort={mobileSort}
                 emptyMessage={`Nobody has played ${minGames} games yet. Lower the minimum to see everyone.`}
                 expandedId={expandedId}
                 mode={mode}
@@ -224,10 +204,6 @@ export function Leaderboard({ modes, mode, onModeChange, version, onPlayer }: Pr
                 Under {minGames} games: {unqualified.map((p) => `${p.name} (${p.wins}-${p.losses})`).join(', ')}
               </p>
             )}
-            <p className="note">
-              Elo starts at 1000 and is calculated within the selected mode. An asterisk means fewer than 10 games, so
-              the rating is still settling.
-            </p>
           </>
         )
       )}

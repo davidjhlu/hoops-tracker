@@ -192,11 +192,6 @@ export function PlayerStats({ modes, mode, onModeChange, player, onPlayerChange,
                 context={`${playerStats.wins} wins · ${playerStats.losses} losses`}
               />
               <MetricCard
-                label="Elo"
-                value={playerStats.elo}
-                context={playerStats.eloProvisional ? 'Provisional · fewer than 10 games' : 'Established rating'}
-              />
-              <MetricCard
                 label="Current streak"
                 value={streakValue(playerStats.streak)}
                 suffix={streakSuffix(playerStats.streak)}
