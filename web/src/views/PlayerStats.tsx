@@ -8,6 +8,7 @@ import { Select } from '@/components/arc/select/select'
 import { api, formatDate, names, type Game, type Mode, type PlayerRef, type Stats } from '../api'
 import { MIN_MATCHUP_GAMES, summarizePlayerMatchups, type PairingRecord } from '../matchups'
 import { ModeFilter } from './ModeFilter'
+import { RunAttendanceCalendar } from './RunAttendanceCalendar'
 
 const PAGE_SIZE = 10
 
@@ -201,6 +202,8 @@ export function PlayerStats({ modes, mode, onModeChange, player, onPlayerChange,
           ) : (
             <p className="note">{stats ? 'No games for this player in the selected mode yet.' : 'Loading player stats…'}</p>
           )}
+
+          {games && <RunAttendanceCalendar player={player} games={games} mode={mode} modes={modes} />}
 
           {matchups && (
             <section className="player-matchup-summary">
