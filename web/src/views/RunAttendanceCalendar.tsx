@@ -104,7 +104,7 @@ export function RunAttendanceCalendar({ player, runGames, playerGames, mode, mod
       <header className="run-attendance-header">
         <div>
           <h3>Runs attended</h3>
-          <p className="note">Each recorded run is one date; filled means attended, outlined means missed.</p>
+          {/* <p className="note">Each recorded run is one date; filled means attended, outlined means missed.</p> */}
         </div>
         <Select
           label="Month"
