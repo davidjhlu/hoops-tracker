@@ -291,7 +291,7 @@ body {
 
 .run-attendance-header {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
   gap: var(--space-4);
 }
@@ -303,8 +303,22 @@ body {
   font-weight: 500;
 }
 
-.run-attendance-header .field {
+.run-attendance-header h3 {
+  margin: 0;
+}
+
+.run-attendance-month {
   width: min(100%, 220px);
+}
+
+/* Visually hidden but still read by screen readers as the select's name. */
+.run-attendance-month label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .run-attendance-count,
@@ -784,7 +798,7 @@ body {
     gap: var(--space-3);
   }
 
-  .run-attendance-header .field {
+  .run-attendance-month {
     width: 100%;
   }
 

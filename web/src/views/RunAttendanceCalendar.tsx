@@ -102,16 +102,15 @@ export function RunAttendanceCalendar({ player, runGames, playerGames, mode, mod
   return (
     <section className="run-attendance" aria-label={`Run attendance for ${player.name}`}>
       <header className="run-attendance-header">
-        <div>
-          <h3>Runs attended</h3>
-          {/* <p className="note">Each recorded run is one date; filled means attended, outlined means missed.</p> */}
+        <h3>Runs attended</h3>
+        <div className="run-attendance-month">
+          <Select
+            label="Month"
+            options={options}
+            value={month}
+            onValueChange={setMonthSelection}
+          />
         </div>
-        <Select
-          label="Month"
-          options={options}
-          value={month}
-          onValueChange={setMonthSelection}
-        />
       </header>
 
       <p className="run-attendance-count">
