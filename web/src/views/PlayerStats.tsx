@@ -35,8 +35,12 @@ const MODE_TONES: Record<string, 'info' | 'success' | 'warning' | 'danger'> = {
 }
 
 const streakValue = (streak: number) => Math.abs(streak)
-const streakSuffix = (streak: number) =>
-  streak === 0 ? '' : ` ${streak > 0 ? 'win' : 'loss'}${Math.abs(streak) === 1 ? '' : 's'}`
+// The counter renders its suffix in an inline-block, which drops a leading regular space, so use a non-breaking one.
+const streakSuffix = (streak: number) => {
+  if (streak === 0) return ''
+  const one = Math.abs(streak) === 1
+  return `\u00a0${streak > 0 ? (one ? 'win' : 'wins') : one ? 'loss' : 'losses'}`
+}
 
 function MatchupTable({ title, pairings, playerName }: { title: string; pairings: PairingRecord[]; playerName: string }) {
   return (
@@ -197,7 +201,9 @@ export function PlayerStats({ modes, mode, onModeChange, player, onPlayerChange,
                 label="Win rate"
                 value={Math.round(playerStats.winPct * 100)}
                 suffix="%"
-                context={`${playerStats.wins} wins · ${playerStats.losses} losses`}
+                context={`${playerStats.wins} ${playerStats.wins === 1 ? 'win' : 'wins'} · ${playerStats.losses} ${
+                  playerStats.losses === 1 ? 'loss' : 'losses'
+                }`}
               />
               <MetricCard
                 label="Current streak"
