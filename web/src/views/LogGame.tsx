@@ -6,7 +6,10 @@ import { Input } from '@/components/arc/input/input'
 import { Button } from '@/components/arc/button/button'
 import { NumberField } from '@/components/arc/number-field/number-field'
 import { Alert } from '@/components/arc/alert/alert'
+import { Shuffle } from 'lucide-react'
 import { api, fromIsoDate, modeForTeamSize, runDate, toIsoDate, type Game, type Mode } from '../api'
+import type { Draw } from '../teamRandomizer'
+import { RandomizeTeams } from './RandomizeTeams'
 
 type Props = {
   modes: Mode[]
@@ -32,6 +35,8 @@ export function LogGame({ modes, version, onSaved, game, onCancel }: Props) {
   const [teamB, setTeamB] = useState<string[]>(() => game?.teamB.map((p) => p.name) ?? [])
   const [scoreA, setScoreA] = useState(game?.scoreA ?? 0)
   const [scoreB, setScoreB] = useState(game?.scoreB ?? 0)
+  const [randomizerOpen, setRandomizerOpen] = useState(false)
+  const [draw, setDraw] = useState<Draw | null>(null)
 
   // Only a change in team size picks the mode, so a manual pick sticks until someone is added or removed.
   const changeTeams = (nextA: string[], nextB: string[]) => {
@@ -114,6 +119,7 @@ export function LogGame({ modes, version, onSaved, game, onCancel }: Props) {
     }
     try {
       await api.addGame(body)
+      setDraw(null)
       setTeamA([])
       setTeamB([])
       setScoreA(0)
@@ -168,6 +174,28 @@ export function LogGame({ modes, version, onSaved, game, onCancel }: Props) {
           Add
         </Button>
       </div>
+
+      {!game && (
+        <>
+          <div className="row">
+            <Button type="button" variant="secondary" onClick={() => setRandomizerOpen(true)} disabled={!pool.length}>
+              <Shuffle size={16} aria-hidden="true" />
+              Randomize teams
+            </Button>
+          </div>
+          <RandomizeTeams
+            open={randomizerOpen}
+            onClose={() => setRandomizerOpen(false)}
+            pool={pool}
+            draw={draw}
+            onDraw={setDraw}
+            onUse={(nextA, nextB) => {
+              changeTeams(nextA, nextB)
+              setRandomizerOpen(false)
+            }}
+          />
+        </>
+      )}
 
       <div className="teams">
         <section className="team" aria-labelledby={`${formId}-team-a`}>

@@ -704,6 +704,101 @@ body {
   gap: var(--space-2);
 }
 
+.randomizer {
+  width: min(640px, calc(100vw - 2 * var(--space-4)));
+  max-height: calc(100dvh - 2 * var(--space-4));
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+  background: var(--surface-raised);
+  color: inherit;
+  box-shadow: var(--shadow-floating);
+}
+
+.randomizer::backdrop {
+  background: oklch(0% 0 0 / .45);
+}
+
+.randomizer-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-5);
+}
+
+.randomizer-header,
+.randomizer-section-head,
+.randomizer-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.randomizer-header h2 {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
+.randomizer-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.randomizer-section h3,
+.randomizer-teams h4 {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.randomizer-quick {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.randomizer-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-4);
+}
+
+.randomizer-result {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.randomizer-teams {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.randomizer-teams li {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  font-size: var(--text-sm);
+}
+
+.randomizer-teams li.is-picked {
+  border-color: var(--accent);
+}
+
+.randomizer-footer {
+  justify-content: flex-end;
+  padding-top: var(--space-2);
+}
+
 .game-edit {
   padding: var(--space-4);
   border: 1px solid var(--border-strong);
