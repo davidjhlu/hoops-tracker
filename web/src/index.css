@@ -419,8 +419,8 @@ body {
 /* Rows share the list's columns through subgrid, so badges, teams, and scores line up across every game. */
 .run-attendance-details ul {
   display: grid;
-  grid-template-columns: max-content minmax(0, 1fr) max-content minmax(0, 1fr);
-  gap: var(--space-2) var(--space-3);
+  grid-template-columns: max-content minmax(0, max-content) max-content minmax(0, 1fr);
+  gap: var(--space-2) var(--space-4);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -438,10 +438,6 @@ body {
 .run-attendance-details li > span {
   min-width: 0;
   overflow-wrap: anywhere;
-}
-
-.run-attendance-details li > span:first-of-type {
-  text-align: right;
 }
 
 .run-attendance-details li > strong {
@@ -932,7 +928,6 @@ body {
   .run-attendance-game-meta,
   .run-attendance-details li > span:first-of-type {
     grid-column: 1 / -1;
-    text-align: left;
   }
 
   .player-recent-team.right {
