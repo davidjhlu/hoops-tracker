@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useId, useState, type FormEvent } from 'react'
 import { Select } from '@/components/arc/select/select'
 import { DatePicker } from '@/components/arc/date-picker/date-picker'
 import { ChipGroup } from '@/components/arc/chip-group/chip-group'
@@ -6,24 +6,42 @@ import { Input } from '@/components/arc/input/input'
 import { Button } from '@/components/arc/button/button'
 import { NumberField } from '@/components/arc/number-field/number-field'
 import { Alert } from '@/components/arc/alert/alert'
-import { api, toIsoDate, type Mode } from '../api'
+import { api, fromIsoDate, modeForTeamSize, runDate, toIsoDate, type Game, type Mode } from '../api'
 
-type Props = { modes: Mode[]; version: number; onSaved: () => void }
+type Props = {
+  modes: Mode[]
+  version: number
+  onSaved: () => void
+  /** When set, the form edits this game instead of logging a new one. */
+  game?: Game
+  onCancel?: () => void
+}
 
 const sameName = (a: string, b: string) => a.toLowerCase() === b.toLowerCase()
 
-export function LogGame({ modes, version, onSaved }: Props) {
-  const [mode, setMode] = useState('hc3')
+export function LogGame({ modes, version, onSaved, game, onCancel }: Props) {
+  const formId = useId()
+  const [mode, setMode] = useState(game?.mode ?? 'hc3')
   const [today] = useState(() => new Date())
-  const [date, setDate] = useState<Date | undefined>(today)
+  const [date, setDate] = useState<Date | undefined>(() => (game ? fromIsoDate(game.playedAt) : runDate(today)))
   const [pool, setPool] = useState<string[]>([])
   const [newName, setNewName] = useState('')
   const [adding, setAdding] = useState(false)
   const [addError, setAddError] = useState('')
-  const [teamA, setTeamA] = useState<string[]>([])
-  const [teamB, setTeamB] = useState<string[]>([])
-  const [scoreA, setScoreA] = useState(0)
-  const [scoreB, setScoreB] = useState(0)
+  const [teamA, setTeamA] = useState<string[]>(() => game?.teamA.map((p) => p.name) ?? [])
+  const [teamB, setTeamB] = useState<string[]>(() => game?.teamB.map((p) => p.name) ?? [])
+  const [scoreA, setScoreA] = useState(game?.scoreA ?? 0)
+  const [scoreB, setScoreB] = useState(game?.scoreB ?? 0)
+
+  // Only a change in team size picks the mode, so a manual pick sticks until someone is added or removed.
+  const changeTeams = (nextA: string[], nextB: string[]) => {
+    const before = Math.max(teamA.length, teamB.length)
+    const after = Math.max(nextA.length, nextB.length)
+    const suggested = after !== before ? modeForTeamSize(after) : undefined
+    if (suggested && modes.some((m) => m.id === suggested)) setMode(suggested)
+    setTeamA(nextA)
+    setTeamB(nextB)
+  }
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
@@ -83,8 +101,19 @@ export function LogGame({ modes, version, onSaved }: Props) {
     if (!teamA.length || !teamB.length) return setError('Each team needs at least one player.')
     if (scoreA === scoreB) return setError("Scores can't be tied. Somebody won.")
     setSaving(true)
+    const body = { mode, playedAt: toIsoDate(date), teamA, teamB, scoreA, scoreB }
+    if (game) {
+      try {
+        await api.updateGame(game.id, body)
+        onSaved()
+      } catch (err) {
+        setError((err as Error).message)
+        setSaving(false)
+      }
+      return
+    }
     try {
-      await api.addGame({ mode, playedAt: toIsoDate(date), teamA, teamB, scoreA, scoreB })
+      await api.addGame(body)
       setTeamA([])
       setTeamB([])
       setScoreA(0)
@@ -141,19 +170,29 @@ export function LogGame({ modes, version, onSaved }: Props) {
       </div>
 
       <div className="teams">
-        <section className="team" aria-labelledby="team-a-title">
-          <h2 id="team-a-title">Team A</h2>
+        <section className="team" aria-labelledby={`${formId}-team-a`}>
+          <h2 id={`${formId}-team-a`}>Team A</h2>
           {pool.length ? (
-            <ChipGroup label="Team A players" options={toOptions(teamB)} value={teamA} onValueChange={setTeamA} />
+            <ChipGroup
+              label="Team A players"
+              options={toOptions(teamB)}
+              value={teamA}
+              onValueChange={(next) => changeTeams(next, teamB)}
+            />
           ) : (
             <p className="note">Add players above to pick teams.</p>
           )}
           <NumberField label="Team A score" value={scoreA} onValueChange={setScoreA} min={0} max={300} />
         </section>
-        <section className="team" aria-labelledby="team-b-title">
-          <h2 id="team-b-title">Team B</h2>
+        <section className="team" aria-labelledby={`${formId}-team-b`}>
+          <h2 id={`${formId}-team-b`}>Team B</h2>
           {pool.length ? (
-            <ChipGroup label="Team B players" options={toOptions(teamA)} value={teamB} onValueChange={setTeamB} />
+            <ChipGroup
+              label="Team B players"
+              options={toOptions(teamA)}
+              value={teamB}
+              onValueChange={(next) => changeTeams(teamA, next)}
+            />
           ) : (
             <p className="note">Add players above to pick teams.</p>
           )}
@@ -167,9 +206,20 @@ export function LogGame({ modes, version, onSaved }: Props) {
         </Alert>
       )}
 
-      <Button type="submit" size="lg" loading={saving}>
-        {saved ? 'Saved' : 'Save game'}
-      </Button>
+      {game ? (
+        <div className="row form-actions">
+          <Button type="submit" loading={saving}>
+            Save changes
+          </Button>
+          <Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>
+            Cancel
+          </Button>
+        </div>
+      ) : (
+        <Button type="submit" size="lg" loading={saving}>
+          {saved ? 'Saved' : 'Save game'}
+        </Button>
+      )}
     </form>
   )
 }

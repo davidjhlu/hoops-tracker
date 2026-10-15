@@ -2,7 +2,7 @@ import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { openDb, listGames, listPlayers, addPlayer, insertGame, deleteGame } from './db.js';
+import { openDb, listGames, listPlayers, addPlayer, insertGame, updateGame, deleteGame } from './db.js';
 import { computeStats } from './stats.js';
 import { MODES, MODE_IDS } from './modes.js';
 
@@ -149,9 +149,14 @@ export function createHandler(getDb) {
           const id = await insertGame(db, game);
           return sendJson(res, 201, { id });
         }
-        const del = pathname.match(/^\/api\/games\/(\d+)$/);
-        if (req.method === 'DELETE' && del) {
-          if (!(await deleteGame(db, Number(del[1])))) throw new HttpError(404, 'Game not found');
+        const one = pathname.match(/^\/api\/games\/(\d+)$/);
+        if (req.method === 'PUT' && one) {
+          const game = validateGame(await readJson(req));
+          if (!(await updateGame(db, Number(one[1]), game))) throw new HttpError(404, 'Game not found');
+          return sendJson(res, 200, { ok: true });
+        }
+        if (req.method === 'DELETE' && one) {
+          if (!(await deleteGame(db, Number(one[1])))) throw new HttpError(404, 'Game not found');
           return sendJson(res, 200, { ok: true });
         }
         if (req.method === 'GET' && pathname === '/api/stats') {

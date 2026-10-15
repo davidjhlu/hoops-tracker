@@ -73,6 +73,30 @@ test('deletes a game', async () => {
   assert.equal((await fetch(`${base}/api/games/${id}`, { method: 'DELETE' })).status, 404);
 });
 
+test('edits a game in place', async () => {
+  const { id } = await (await post(valid)).json();
+  const put = (gameId, body) =>
+    fetch(`${base}/api/games/${gameId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+  const edited = { ...valid, mode: 'hc4', playedAt: '2026-10-09', teamA: ['Ann', 'Bob', 'Eve'], scoreA: 5, scoreB: 11 };
+  assert.equal((await put(id, edited)).status, 200);
+
+  const game = (await listGames(db)).find((g) => g.id === id);
+  assert.equal(game.mode, 'hc4');
+  assert.equal(game.playedAt, '2026-10-09');
+  assert.deepEqual([game.scoreA, game.scoreB], [5, 11]);
+  assert.deepEqual(game.teamA.map((p) => p.name), ['Ann', 'Bob', 'Eve']);
+  assert.deepEqual(game.teamB.map((p) => p.name), ['Cat', 'Dan']);
+
+  assert.equal((await put(id, { ...edited, scoreB: 5 })).status, 400, 'validates like a new game');
+  assert.equal((await put(999999, edited)).status, 404);
+  await fetch(`${base}/api/games/${id}`, { method: 'DELETE' });
+});
+
 test('a failed insert rolls back the whole game', async () => {
   const before = (await listGames(db)).length;
   await assert.rejects(insertGame(db, { ...valid, teamA: ['Zed', 'zed'], teamB: ['Yan'] }));

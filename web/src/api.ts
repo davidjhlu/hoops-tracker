@@ -75,6 +75,12 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(game),
     }),
+  updateGame: (id: number, game: NewGame) =>
+    request<{ ok: true }>(`/api/games/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(game),
+    }),
   deleteGame: (id: number) => request<{ ok: true }>(`/api/games/${id}`, { method: 'DELETE' }),
 }
 
@@ -86,6 +92,26 @@ export function formatDate(iso: string) {
 export function toIsoDate(date: Date) {
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+}
+
+export function fromIsoDate(iso: string) {
+  const [y, m, d] = iso.split('-').map(Number)
+  return new Date(y, m - 1, d)
+}
+
+/** Runs often go past midnight, so before this hour a new game defaults to the previous day's run. */
+export const RUN_DAY_CUTOFF_HOUR = 5
+
+export function runDate(now: Date) {
+  const date = new Date(now)
+  if (date.getHours() < RUN_DAY_CUTOFF_HOUR) date.setDate(date.getDate() - 1)
+  return date
+}
+
+const MODE_BY_TEAM_SIZE: Record<number, string> = { 3: 'hc3', 4: 'hc4', 5: 'fc5' }
+
+export function modeForTeamSize(size: number): string | undefined {
+  return MODE_BY_TEAM_SIZE[size]
 }
 
 export const names = (team: PlayerRef[]) => team.map((p) => p.name).join(', ')

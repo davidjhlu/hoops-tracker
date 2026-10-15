@@ -76,6 +76,18 @@ async function getOrCreatePlayer(tx, name) {
   return rows[0].id;
 }
 
+async function insertLineups(tx, gameId, teamA, teamB) {
+  for (const [team, names] of [['A', teamA], ['B', teamB]]) {
+    for (const name of names) {
+      const playerId = await getOrCreatePlayer(tx, name);
+      await tx.execute({
+        sql: 'INSERT INTO game_players (game_id, player_id, team) VALUES (?, ?, ?)',
+        args: [gameId, playerId, team],
+      });
+    }
+  }
+}
+
 export async function insertGame(db, { mode, playedAt, scoreA, scoreB, teamA, teamB }) {
   const tx = await db.transaction('write');
   try {
@@ -84,17 +96,33 @@ export async function insertGame(db, { mode, playedAt, scoreA, scoreB, teamA, te
       args: [mode, playedAt, scoreA, scoreB],
     });
     const gameId = Number(res.lastInsertRowid);
-    for (const [team, names] of [['A', teamA], ['B', teamB]]) {
-      for (const name of names) {
-        const playerId = await getOrCreatePlayer(tx, name);
-        await tx.execute({
-          sql: 'INSERT INTO game_players (game_id, player_id, team) VALUES (?, ?, ?)',
-          args: [gameId, playerId, team],
-        });
-      }
-    }
+    await insertLineups(tx, gameId, teamA, teamB);
     await tx.commit();
     return gameId;
+  } catch (err) {
+    await tx.rollback();
+    throw err;
+  } finally {
+    tx.close();
+  }
+}
+
+/** Rewrites a game in place, keeping its id so its position among same-date games (and thus streaks) is stable. */
+export async function updateGame(db, id, { mode, playedAt, scoreA, scoreB, teamA, teamB }) {
+  const tx = await db.transaction('write');
+  try {
+    const res = await tx.execute({
+      sql: 'UPDATE games SET mode = ?, played_at = ?, score_a = ?, score_b = ? WHERE id = ?',
+      args: [mode, playedAt, scoreA, scoreB, id],
+    });
+    if (res.rowsAffected === 0) {
+      await tx.rollback();
+      return false;
+    }
+    await tx.execute({ sql: 'DELETE FROM game_players WHERE game_id = ?', args: [id] });
+    await insertLineups(tx, id, teamA, teamB);
+    await tx.commit();
+    return true;
   } catch (err) {
     await tx.rollback();
     throw err;

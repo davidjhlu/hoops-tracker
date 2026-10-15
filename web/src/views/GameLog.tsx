@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
-import { Trash2, CalendarDays } from 'lucide-react'
+import { Trash2, CalendarDays, Pencil } from 'lucide-react'
 import { Badge } from '@/components/arc/badge/badge'
+import { Button } from '@/components/arc/button/button'
 import { ConfirmMorph } from '@/components/arc/confirm-morph/confirm-morph'
 import { EmptyState } from '@/components/arc/empty-state/empty-state'
 import { Alert } from '@/components/arc/alert/alert'
 import { api, formatDate, names, type Game, type Mode } from '../api'
 import { ModeFilter } from './ModeFilter'
+import { LogGame } from './LogGame'
 
 type Props = {
   modes: Mode[]
@@ -25,6 +27,7 @@ const MODE_TONES: Record<string, 'info' | 'success' | 'warning' | 'danger'> = {
 export function GameLog({ modes, mode, onModeChange, version, onChange }: Props) {
   const [games, setGames] = useState<Game[] | null>(null)
   const [error, setError] = useState('')
+  const [editingId, setEditingId] = useState<number | null>(null)
   const modeLabel = (id: string) => modes.find((m) => m.id === id)?.label ?? id
 
   useEffect(() => {
@@ -96,6 +99,22 @@ export function GameLog({ modes, mode, onModeChange, version, onChange }: Props)
 
       <ol className="games">
         {shown?.map((g) => {
+          if (editingId === g.id && !ghosts.has(g.id)) {
+            return (
+              <li key={g.id} className="game-edit" aria-label={`Editing game on ${formatDate(g.playedAt)}`}>
+                <LogGame
+                  modes={modes}
+                  version={version}
+                  game={g}
+                  onCancel={() => setEditingId(null)}
+                  onSaved={() => {
+                    setEditingId(null)
+                    onChange()
+                  }}
+                />
+              </li>
+            )
+          }
           const aWon = g.scoreA > g.scoreB
           const rowClassName = ['game', ghosts.has(g.id) ? 'deleted' : ''].filter(Boolean).join(' ')
           return (
@@ -118,6 +137,18 @@ export function GameLog({ modes, mode, onModeChange, version, onChange }: Props)
                 <span className={aWon ? 'team right' : 'team right won'}>{names(g.teamB)}</span>
               </div>
               <div className="game-actions">
+                {!ghosts.has(g.id) && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    aria-label={`Edit game on ${formatDate(g.playedAt)}`}
+                    onClick={() => setEditingId(g.id)}
+                  >
+                    <Pencil size={14} strokeWidth={1.75} aria-hidden="true" />
+                    Edit
+                  </Button>
+                )}
                 <ConfirmMorph
                   label="Delete"
                   icon={<Trash2 size={14} strokeWidth={1.75} />}
