@@ -416,6 +416,10 @@ body {
   border-top: 1px solid var(--border-subtle);
 }
 
+.run-attendance-court {
+  width: min(100%, 260px);
+}
+
 /* Rows share the list's columns through subgrid, so badges, teams, and scores line up across every game. */
 .run-attendance-details ul {
   display: grid;
@@ -706,10 +710,20 @@ body {
 
 .game-meta {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
   color: var(--text-secondary);
   font-size: var(--text-sm);
+}
+
+.game-court {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  white-space: nowrap;
 }
 
 .game-actions {

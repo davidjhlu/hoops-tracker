@@ -7,6 +7,7 @@ import { getMatchupHighlights, summarizePlayerMatchups, type PairingRecord } fro
 type Props = {
   player: PlayerRef
   mode: string
+  court?: string
   modes: Mode[]
   version: number
 }
@@ -76,14 +77,14 @@ function MatchupGroup({
   )
 }
 
-export function PlayerRecentGames({ player, mode, modes, version }: Props) {
-  const requestKey = `${mode}:${player.id}`
+export function PlayerRecentGames({ player, mode, court = '', modes, version }: Props) {
+  const requestKey = `${mode}:${court}:${player.id}`
   const [state, setState] = useState<RecentGamesState>({ key: '', games: null, error: '' })
 
   useEffect(() => {
     let live = true
     api
-      .games(mode, player.id)
+      .games(mode, player.id, court)
       .then((result) => {
         if (!live) return
         setState({
@@ -97,7 +98,7 @@ export function PlayerRecentGames({ player, mode, modes, version }: Props) {
     return () => {
       live = false
     }
-  }, [mode, player.id, requestKey, version])
+  }, [mode, court, player.id, requestKey, version])
 
   const modeLabel = (id: string) => modes.find((item) => item.id === id)?.label ?? id
   const games = state.key === requestKey ? state.games : null

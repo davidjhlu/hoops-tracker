@@ -7,12 +7,13 @@ import { Button } from '@/components/arc/button/button'
 import { NumberField } from '@/components/arc/number-field/number-field'
 import { Alert } from '@/components/arc/alert/alert'
 import { Shuffle } from 'lucide-react'
-import { api, fromIsoDate, modeForTeamSize, runDate, toIsoDate, type Game, type Mode } from '../api'
+import { api, fromIsoDate, modeForTeamSize, runDate, toIsoDate, type Court, type Courts, type Game, type Mode } from '../api'
 import type { Draw } from '../teamRandomizer'
 import { RandomizeTeams } from './RandomizeTeams'
 
 type Props = {
   modes: Mode[]
+  courtData: Courts
   version: number
   onSaved: () => void
   /** When set, the form edits this game instead of logging a new one. */
@@ -22,7 +23,11 @@ type Props = {
 
 const sameName = (a: string, b: string) => a.toLowerCase() === b.toLowerCase()
 
-export function LogGame({ modes, version, onSaved, game, onCancel }: Props) {
+const LAST_COURT_KEY = 'hoops:lastCourt'
+const NO_COURT = 'none'
+const NEW_COURT = 'new'
+
+export function LogGame({ modes, courtData, version, onSaved, game, onCancel }: Props) {
   const formId = useId()
   const [mode, setMode] = useState(game?.mode ?? 'hc3')
   const [today] = useState(() => new Date())
@@ -37,6 +42,44 @@ export function LogGame({ modes, version, onSaved, game, onCancel }: Props) {
   const [scoreB, setScoreB] = useState(game?.scoreB ?? 0)
   const [randomizerOpen, setRandomizerOpen] = useState(false)
   const [draw, setDraw] = useState<Draw | null>(null)
+  // null means "not picked for this date yet", so the run's saved court (or the last one used) shows through.
+  const [courtChoice, setCourtChoice] = useState<string | null>(() => (game?.court ? String(game.court.id) : null))
+  const [addedCourts, setAddedCourts] = useState<Court[]>([])
+  const [newCourt, setNewCourt] = useState('')
+  const [addingCourt, setAddingCourt] = useState(false)
+  const [courtError, setCourtError] = useState('')
+
+  const courts = [...courtData.courts, ...addedCourts.filter((a) => !courtData.courts.some((c) => c.id === a.id))].sort(
+    (a, b) => a.name.localeCompare(b.name),
+  )
+  const isoDate = date ? toIsoDate(date) : ''
+  const runCourtId = isoDate ? courtData.runs[isoDate] : undefined
+  const lastCourt = localStorage.getItem(LAST_COURT_KEY) ?? ''
+  const fallbackCourt = game ? NO_COURT : courts.some((c) => String(c.id) === lastCourt) ? lastCourt : NO_COURT
+  const court = courtChoice ?? (runCourtId !== undefined ? String(runCourtId) : fallbackCourt)
+  const movesRun = runCourtId !== undefined && court !== NEW_COURT && court !== NO_COURT && Number(court) !== runCourtId
+
+  const changeDate = (next: Date | undefined) => {
+    setDate(next)
+    setCourtChoice(null)
+  }
+
+  const saveCourt = async () => {
+    const name = newCourt.trim().replace(/\s+/g, ' ')
+    if (!name || addingCourt) return
+    setAddingCourt(true)
+    setCourtError('')
+    try {
+      const added = await api.addCourt(name)
+      setAddedCourts((prev) => [...prev.filter((c) => c.id !== added.id), added])
+      setCourtChoice(String(added.id))
+      setNewCourt('')
+    } catch (err) {
+      setCourtError((err as Error).message)
+    } finally {
+      setAddingCourt(false)
+    }
+  }
 
   // Only a change in team size picks the mode, so a manual pick sticks until someone is added or removed.
   const changeTeams = (nextA: string[], nextB: string[]) => {
@@ -105,8 +148,11 @@ export function LogGame({ modes, version, onSaved, game, onCancel }: Props) {
     if (!date) return setError('Pick the date the game was played.')
     if (!teamA.length || !teamB.length) return setError('Each team needs at least one player.')
     if (scoreA === scoreB) return setError("Scores can't be tied. Somebody won.")
+    if (court === NEW_COURT) return setError('Add the new court, or pick an existing one.')
     setSaving(true)
-    const body = { mode, playedAt: toIsoDate(date), teamA, teamB, scoreA, scoreB }
+    const courtId = court === NO_COURT ? null : Number(court)
+    const body = { mode, playedAt: toIsoDate(date), teamA, teamB, scoreA, scoreB, courtId }
+    if (courtId !== null) localStorage.setItem(LAST_COURT_KEY, String(courtId))
     if (game) {
       try {
         await api.updateGame(game.id, body)
@@ -142,7 +188,52 @@ export function LogGame({ modes, version, onSaved, game, onCancel }: Props) {
           value={mode}
           onValueChange={setMode}
         />
-        <DatePicker label="Date" value={date} onChange={setDate} maxDate={today} showToday />
+        <DatePicker label="Date" value={date} onChange={changeDate} maxDate={today} showToday />
+      </div>
+
+      <div className="row">
+        <Select
+          label="Court"
+          options={[
+            ...courts.map((c) => ({ value: String(c.id), label: c.name })),
+            { value: NO_COURT, label: 'No court' },
+            { value: NEW_COURT, label: 'Add a court…' },
+          ]}
+          value={court}
+          onValueChange={setCourtChoice}
+          description={
+            movesRun
+              ? 'This date already has a court. Saving moves every game on this date to this court.'
+              : runCourtId !== undefined && court === NO_COURT
+                ? "This date already has a court, and it stays. Change it from the run's day on the Stats calendar."
+                : undefined
+          }
+        />
+        {court === NEW_COURT && (
+          <div className="row add-player">
+            <Input
+              label="New court"
+              placeholder="Court name"
+              value={newCourt}
+              maxLength={40}
+              autoComplete="off"
+              error={courtError || undefined}
+              onChange={(e) => {
+                setNewCourt(e.target.value)
+                setCourtError('')
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  saveCourt()
+                }
+              }}
+            />
+            <Button type="button" variant="secondary" onClick={saveCourt} loading={addingCourt} disabled={!newCourt.trim()}>
+              Add
+            </Button>
+          </div>
+        )}
       </div>
 
       <div className="row add-player">

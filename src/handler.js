@@ -2,7 +2,10 @@ import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { openDb, listGames, listPlayers, addPlayer, insertGame, updateGame, deleteGame } from './db.js';
+import {
+  openDb, listGames, listPlayers, addPlayer, insertGame, updateGame, deleteGame,
+  listCourts, addCourt, courtExists, setRunCourt,
+} from './db.js';
 import { computeStats } from './stats.js';
 import { MODES, MODE_IDS } from './modes.js';
 
@@ -67,14 +70,40 @@ function validatePlayerName(body) {
   return name;
 }
 
+const MAX_COURT_NAME = 40;
+
+function validateCourtName(body) {
+  const name = normalizeName(body.name);
+  if (!name) throw new HttpError(400, 'Court name is required');
+  if (name.length > MAX_COURT_NAME) throw new HttpError(400, `Keep court names to ${MAX_COURT_NAME} characters`);
+  return name;
+}
+
+function validateCourtId(value) {
+  if (value == null) return null;
+  const id = Number(value);
+  if (!Number.isInteger(id) || id <= 0) throw new HttpError(400, 'Unknown court');
+  return id;
+}
+
+function validateDate(value) {
+  const date = String(value ?? '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(date))) {
+    throw new HttpError(400, 'Date must be YYYY-MM-DD');
+  }
+  return date;
+}
+
+// Foreign keys aren't enforced on these connections, so a missing court would otherwise be saved silently.
+async function requireCourt(db, courtId) {
+  if (courtId != null && !(await courtExists(db, courtId))) throw new HttpError(400, 'Unknown court');
+}
+
 function validateGame(body) {
   const mode = String(body.mode ?? '');
   if (!MODE_IDS.has(mode)) throw new HttpError(400, 'Unknown game mode');
 
-  const playedAt = String(body.playedAt ?? '');
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(playedAt) || Number.isNaN(Date.parse(playedAt))) {
-    throw new HttpError(400, 'Date must be YYYY-MM-DD');
-  }
+  const playedAt = validateDate(body.playedAt);
 
   const scoreA = Number(body.scoreA);
   const scoreB = Number(body.scoreB);
@@ -92,16 +121,19 @@ function validateGame(body) {
     seen.add(key);
   }
 
-  return { mode, playedAt, scoreA, scoreB, teamA, teamB };
+  return { mode, playedAt, scoreA, scoreB, teamA, teamB, courtId: validateCourtId(body.courtId) };
 }
 
+/** `court` is a court id, or `none` for runs that have no court yet. */
 function filterGames(games, params) {
   const mode = params.get('mode');
   const player = Number(params.get('player'));
+  const court = params.get('court');
   return games.filter(
     (g) =>
       (!mode || mode === 'all' || g.mode === mode) &&
-      (!player || [...g.teamA, ...g.teamB].some((p) => p.id === player))
+      (!player || [...g.teamA, ...g.teamB].some((p) => p.id === player)) &&
+      (!court || (court === 'none' ? g.court === null : g.court?.id === Number(court)))
   );
 }
 
@@ -144,14 +176,31 @@ export function createHandler(getDb) {
           const games = filterGames(await listGames(db), searchParams).reverse();
           return sendJson(res, 200, games);
         }
+        if (req.method === 'GET' && pathname === '/api/courts') {
+          return sendJson(res, 200, await listCourts(db));
+        }
+        if (req.method === 'POST' && pathname === '/api/courts') {
+          const name = validateCourtName(await readJson(req));
+          return sendJson(res, 201, await addCourt(db, name));
+        }
+        const run = pathname.match(/^\/api\/runs\/([^/]+)\/court$/);
+        if (req.method === 'PUT' && run) {
+          const playedAt = validateDate(decodeURIComponent(run[1]));
+          const courtId = validateCourtId((await readJson(req)).courtId);
+          await requireCourt(db, courtId);
+          await setRunCourt(db, playedAt, courtId);
+          return sendJson(res, 200, { ok: true });
+        }
         if (req.method === 'POST' && pathname === '/api/games') {
           const game = validateGame(await readJson(req));
+          await requireCourt(db, game.courtId);
           const id = await insertGame(db, game);
           return sendJson(res, 201, { id });
         }
         const one = pathname.match(/^\/api\/games\/(\d+)$/);
         if (req.method === 'PUT' && one) {
           const game = validateGame(await readJson(req));
+          await requireCourt(db, game.courtId);
           if (!(await updateGame(db, Number(one[1]), game))) throw new HttpError(404, 'Game not found');
           return sendJson(res, 200, { ok: true });
         }
@@ -161,8 +210,17 @@ export function createHandler(getDb) {
         }
         if (req.method === 'GET' && pathname === '/api/stats') {
           const minGames = Math.max(0, Number(searchParams.get('minGames')) || 0);
-          const games = filterGames(await listGames(db), new URLSearchParams({ mode: searchParams.get('mode') || '' }));
-          return sendJson(res, 200, computeStats(games, { minGames }));
+          const modeGames = filterGames(await listGames(db), new URLSearchParams({ mode: searchParams.get('mode') || '' }));
+          const court = searchParams.get('court');
+          if (!court) return sendJson(res, 200, computeStats(modeGames, { minGames }));
+          // Records follow the court filter, but Elo keeps rating every game in the mode.
+          const courtStats = computeStats(filterGames(modeGames, new URLSearchParams({ court })), { minGames });
+          const elo = new Map(computeStats(modeGames).leaderboard.map((p) => [p.id, p]));
+          for (const p of courtStats.leaderboard) {
+            p.elo = elo.get(p.id).elo;
+            p.eloProvisional = elo.get(p.id).eloProvisional;
+          }
+          return sendJson(res, 200, courtStats);
         }
         throw new HttpError(404, 'Not found');
       }

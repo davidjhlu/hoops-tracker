@@ -97,6 +97,56 @@ test('edits a game in place', async () => {
   await fetch(`${base}/api/games/${id}`, { method: 'DELETE' });
 });
 
+test('courts belong to runs and filter games and stats', async () => {
+  const json = (method, url, body) =>
+    fetch(`${base}${url}`, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+
+  const court = await (await json('POST', '/api/courts', { name: 'Main St' })).json();
+  assert.equal((await (await json('POST', '/api/courts', { name: 'main st' })).json()).id, court.id, 'case-insensitive');
+  assert.equal((await json('POST', '/api/courts', { name: '  ' })).status, 400);
+
+  const day = '2026-09-01';
+  const first = await (await post({ ...valid, playedAt: day, courtId: court.id })).json();
+  const second = await (await post({ ...valid, playedAt: day, scoreA: 1, scoreB: 21 })).json();
+  assert.equal((await post({ ...valid, playedAt: day, courtId: 999999 })).status, 400, 'unknown court');
+
+  const onDay = (await listGames(db)).filter((g) => g.playedAt === day);
+  assert.deepEqual(onDay.map((g) => g.court?.name), ['Main St', 'Main St'], 'every game in the run shares the court');
+
+  const { runs } = await (await fetch(`${base}/api/courts`)).json();
+  assert.equal(runs[day], court.id);
+
+  const filtered = await (await fetch(`${base}/api/games?court=${court.id}`)).json();
+  assert.deepEqual(filtered.map((g) => g.id).sort(), [first.id, second.id].sort());
+  assert.ok((await (await fetch(`${base}/api/games?court=none`)).json()).every((g) => g.court === null));
+
+  const all = await (await fetch(`${base}/api/stats?mode=hc3`)).json();
+  const atCourt = await (await fetch(`${base}/api/stats?mode=hc3&court=${court.id}`)).json();
+  assert.equal(atCourt.records.totalGames, 2);
+  const ann = (stats) => stats.leaderboard.find((p) => p.name === 'Ann');
+  assert.equal(ann(atCourt).wins, 1, 'records follow the court');
+  assert.equal(ann(atCourt).elo, ann(all).elo, 'Elo still rates every game');
+
+  const otherCourt = await (await json('POST', '/api/courts', { name: 'Park' })).json();
+  assert.equal((await json('PUT', `/api/games/${first.id}`, {
+    ...valid, playedAt: day, courtId: otherCourt.id,
+  })).status, 200);
+  assert.ok((await listGames(db)).filter((g) => g.playedAt === day).every((g) => g.court?.id === otherCourt.id),
+    'editing a court updates every game on the date');
+  assert.equal((await json('PUT', `/api/runs/${day}/court`, { courtId: court.id })).status, 200);
+  assert.ok((await listGames(db)).filter((g) => g.playedAt === day).every((g) => g.court?.id === court.id),
+    'the calendar route sets the court for the whole run');
+  assert.equal((await json('PUT', `/api/runs/${day}/court`, { courtId: 999999 })).status, 400);
+  const afterCourtChange = await (await fetch(`${base}/api/stats?mode=hc3`)).json();
+  assert.deepEqual(afterCourtChange, all, 'changing only a court leaves global stats and Elo unchanged');
+
+  assert.equal((await json('PUT', `/api/runs/${day}/court`, { courtId: null })).status, 200);
+  assert.ok((await listGames(db)).filter((g) => g.playedAt === day).every((g) => g.court === null));
+  assert.equal((await json('PUT', '/api/runs/not-a-date/court', { courtId: court.id })).status, 400);
+
+  for (const { id } of [first, second]) await fetch(`${base}/api/games/${id}`, { method: 'DELETE' });
+});
+
 test('a failed insert rolls back the whole game', async () => {
   const before = (await listGames(db)).length;
   await assert.rejects(insertGame(db, { ...valid, teamA: ['Zed', 'zed'], teamB: ['Yan'] }));

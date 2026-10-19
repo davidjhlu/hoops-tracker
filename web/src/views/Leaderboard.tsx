@@ -5,8 +5,9 @@ import { MetricCard } from '@/components/arc/metric-card/metric-card'
 import { Select } from '@/components/arc/select/select'
 import { EmptyState } from '@/components/arc/empty-state/empty-state'
 import { Alert } from '@/components/arc/alert/alert'
-import { api, type Leader, type Mode, type PlayerRef, type PlayerStats, type Stats } from '../api'
+import { api, type Court, type Leader, type Mode, type PlayerRef, type PlayerStats, type Stats } from '../api'
 import { ModeFilter } from './ModeFilter'
+import { CourtFilter } from './CourtFilter'
 import { PlayerRecentGames } from './PlayerRecentGames'
 import { useMediaQuery } from '../useMediaQuery'
 
@@ -14,6 +15,9 @@ type Props = {
   modes: Mode[]
   mode: string
   onModeChange: (mode: string) => void
+  courts: Court[]
+  court: string
+  onCourtChange: (court: string) => void
   version: number
   onPlayer: (player: PlayerRef) => void
 }
@@ -30,13 +34,14 @@ type CompactBoardProps = {
   emptyMessage: string
   expandedId: number | null
   mode: string
+  court: string
   modes: Mode[]
   version: number
   onToggle: (player: Row) => void
   onPlayer: (player: PlayerRef) => void
 }
 
-function CompactBoard({ rows, emptyMessage, expandedId, mode, modes, version, onToggle, onPlayer }: CompactBoardProps) {
+function CompactBoard({ rows, emptyMessage, expandedId, mode, court, modes, version, onToggle, onPlayer }: CompactBoardProps) {
   if (!rows.length) return <p className="note board-empty">{emptyMessage}</p>
   return (
     <ol className="board" aria-label="Leaderboard">
@@ -76,7 +81,7 @@ function CompactBoard({ rows, emptyMessage, expandedId, mode, modes, version, on
           </div>
           {expandedId === row.id && (
             <div className="board-expanded" id={`compact-player-games-${row.id}`}>
-              <PlayerRecentGames player={row} mode={mode} modes={modes} version={version} />
+              <PlayerRecentGames player={row} mode={mode} court={court} modes={modes} version={version} />
             </div>
           )}
         </li>
@@ -85,7 +90,7 @@ function CompactBoard({ rows, emptyMessage, expandedId, mode, modes, version, on
   )
 }
 
-export function Leaderboard({ modes, mode, onModeChange, version, onPlayer }: Props) {
+export function Leaderboard({ modes, mode, onModeChange, courts, court, onCourtChange, version, onPlayer }: Props) {
   const [minGames, setMinGames] = useState('1')
   const [expandedId, setExpandedId] = useState<number | null>(null)
   // Matches the width where the Arc table folds its rows and drops the column labels.
@@ -96,7 +101,7 @@ export function Leaderboard({ modes, mode, onModeChange, version, onPlayer }: Pr
   useEffect(() => {
     let live = true
     api
-      .stats(mode, Number(minGames))
+      .stats(mode, Number(minGames), court)
       .then((s) => {
         if (!live) return
         setStats(s)
@@ -106,7 +111,7 @@ export function Leaderboard({ modes, mode, onModeChange, version, onPlayer }: Pr
     return () => {
       live = false
     }
-  }, [mode, minGames, version])
+  }, [mode, minGames, court, version])
 
   const qualified: Row[] = (stats?.leaderboard ?? []).filter((p) => p.qualified).map((p, i) => ({ ...p, rank: i + 1 }))
   const unqualified = (stats?.leaderboard ?? []).filter((p) => !p.qualified)
@@ -143,6 +148,7 @@ export function Leaderboard({ modes, mode, onModeChange, version, onPlayer }: Pr
   return (
     <div className="stack">
       <ModeFilter modes={modes} mode={mode} onModeChange={onModeChange} />
+      <CourtFilter courts={courts} court={court} onCourtChange={onCourtChange} />
 
       {error && (
         <Alert tone="danger" title="Couldn't load the leaderboard">
@@ -154,14 +160,14 @@ export function Leaderboard({ modes, mode, onModeChange, version, onPlayer }: Pr
         <EmptyState
           icon={<Trophy size={24} />}
           title="No games yet"
-          description={mode ? 'Nobody has logged a game in this mode yet.' : 'Log your first game and the leaderboard fills in.'}
+          description={mode || court ? 'No games match these filters yet.' : 'Log your first game and the leaderboard fills in.'}
         />
       ) : (
         stats &&
         records && (
           <>
             <div className="metrics">
-              <MetricCard label="Games played" value={records.totalGames} context={mode ? 'In this mode' : 'All modes'} />
+              <MetricCard label="Games played" value={records.totalGames} context={court ? 'At this court' : mode ? 'In this mode' : 'All modes'} />
               <MetricCard
                 label="Longest win streak"
                 value={records.longestWinStreak?.value ?? 0}
@@ -179,6 +185,7 @@ export function Leaderboard({ modes, mode, onModeChange, version, onPlayer }: Pr
                 emptyMessage={`Nobody has played ${minGames} games yet. Lower the minimum to see everyone.`}
                 expandedId={expandedId}
                 mode={mode}
+                court={court}
                 modes={modes}
                 version={version}
                 onToggle={toggleExpanded}
@@ -195,7 +202,7 @@ export function Leaderboard({ modes, mode, onModeChange, version, onPlayer }: Pr
                 itemName={{ one: 'player', other: 'players' }}
                 onRowActivate={toggleExpanded}
                 expandedRowKey={expandedId === null ? undefined : String(expandedId)}
-                renderExpandedRow={(row) => <PlayerRecentGames player={row} mode={mode} modes={modes} version={version} />}
+                renderExpandedRow={(row) => <PlayerRecentGames player={row} mode={mode} court={court} modes={modes} version={version} />}
               />
             )}
 

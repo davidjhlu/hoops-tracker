@@ -22,6 +22,18 @@ const SCHEMA = `
     team      TEXT NOT NULL CHECK (team IN ('A', 'B')),
     PRIMARY KEY (game_id, player_id)
   );
+
+  CREATE TABLE IF NOT EXISTS courts (
+    id         INTEGER PRIMARY KEY,
+    name       TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  -- A run is every game on one date, and a run is always at one court, so the court is stored per date.
+  CREATE TABLE IF NOT EXISTS run_courts (
+    played_at TEXT PRIMARY KEY,
+    court_id  INTEGER NOT NULL REFERENCES courts(id)
+  );
 `;
 
 /** `url` is a local `file:` path, `:memory:`, or a Turso `libsql://` URL. */
@@ -40,8 +52,12 @@ export async function listPlayers(db) {
 export async function listGames(db) {
   const [games, links] = await db.batch(
     [
-      `SELECT id, mode, played_at AS playedAt, score_a AS scoreA, score_b AS scoreB
-       FROM games ORDER BY played_at, id`,
+      `SELECT g.id, g.mode, g.played_at AS playedAt, g.score_a AS scoreA, g.score_b AS scoreB,
+              c.id AS courtId, c.name AS courtName
+       FROM games g
+       LEFT JOIN run_courts rc ON rc.played_at = g.played_at
+       LEFT JOIN courts c ON c.id = rc.court_id
+       ORDER BY g.played_at, g.id`,
       `SELECT gp.game_id AS gameId, gp.team, p.id, p.name
        FROM game_players gp JOIN players p ON p.id = gp.player_id
        ORDER BY p.name COLLATE NOCASE`,
@@ -52,7 +68,9 @@ export async function listGames(db) {
   const byId = new Map();
   for (const g of games.rows) {
     byId.set(g.id, {
-      id: g.id, mode: g.mode, playedAt: g.playedAt, scoreA: g.scoreA, scoreB: g.scoreB, teamA: [], teamB: [],
+      id: g.id, mode: g.mode, playedAt: g.playedAt, scoreA: g.scoreA, scoreB: g.scoreB,
+      court: g.courtId == null ? null : { id: g.courtId, name: g.courtName },
+      teamA: [], teamB: [],
     });
   }
   for (const r of links.rows) {
@@ -88,7 +106,46 @@ async function insertLineups(tx, gameId, teamA, teamB) {
   }
 }
 
-export async function insertGame(db, { mode, playedAt, scoreA, scoreB, teamA, teamB }) {
+export async function listCourts(db) {
+  const [courts, runs] = await db.batch(
+    [
+      'SELECT id, name FROM courts ORDER BY name COLLATE NOCASE',
+      'SELECT played_at AS playedAt, court_id AS courtId FROM run_courts',
+    ],
+    'read'
+  );
+  return {
+    courts: courts.rows.map((r) => ({ id: r.id, name: r.name })),
+    runs: Object.fromEntries(runs.rows.map((r) => [r.playedAt, r.courtId])),
+  };
+}
+
+/** Returns the stored court, keeping the existing spelling if the name differs only by case. */
+export async function addCourt(db, name) {
+  await db.execute({ sql: 'INSERT INTO courts (name) VALUES (?) ON CONFLICT (name) DO NOTHING', args: [name] });
+  const { rows } = await db.execute({ sql: 'SELECT id, name FROM courts WHERE name = ?', args: [name] });
+  return { id: rows[0].id, name: rows[0].name };
+}
+
+export async function courtExists(db, id) {
+  const { rows } = await db.execute({ sql: 'SELECT 1 FROM courts WHERE id = ?', args: [id] });
+  return rows.length > 0;
+}
+
+/** `courtId` null clears the run's court. Works on a `db` client or an open transaction. */
+export async function setRunCourt(client, playedAt, courtId) {
+  if (courtId == null) {
+    await client.execute({ sql: 'DELETE FROM run_courts WHERE played_at = ?', args: [playedAt] });
+    return;
+  }
+  await client.execute({
+    sql: `INSERT INTO run_courts (played_at, court_id) VALUES (?, ?)
+          ON CONFLICT (played_at) DO UPDATE SET court_id = excluded.court_id`,
+    args: [playedAt, courtId],
+  });
+}
+
+export async function insertGame(db, { mode, playedAt, scoreA, scoreB, teamA, teamB, courtId }) {
   const tx = await db.transaction('write');
   try {
     const res = await tx.execute({
@@ -97,6 +154,7 @@ export async function insertGame(db, { mode, playedAt, scoreA, scoreB, teamA, te
     });
     const gameId = Number(res.lastInsertRowid);
     await insertLineups(tx, gameId, teamA, teamB);
+    if (courtId != null) await setRunCourt(tx, playedAt, courtId);
     await tx.commit();
     return gameId;
   } catch (err) {
@@ -108,7 +166,7 @@ export async function insertGame(db, { mode, playedAt, scoreA, scoreB, teamA, te
 }
 
 /** Rewrites a game in place, keeping its id so its position among same-date games (and thus streaks) is stable. */
-export async function updateGame(db, id, { mode, playedAt, scoreA, scoreB, teamA, teamB }) {
+export async function updateGame(db, id, { mode, playedAt, scoreA, scoreB, teamA, teamB, courtId }) {
   const tx = await db.transaction('write');
   try {
     const res = await tx.execute({
@@ -121,6 +179,7 @@ export async function updateGame(db, id, { mode, playedAt, scoreA, scoreB, teamA
     }
     await tx.execute({ sql: 'DELETE FROM game_players WHERE game_id = ?', args: [id] });
     await insertLineups(tx, id, teamA, teamB);
+    if (courtId != null) await setRunCourt(tx, playedAt, courtId);
     await tx.commit();
     return true;
   } catch (err) {

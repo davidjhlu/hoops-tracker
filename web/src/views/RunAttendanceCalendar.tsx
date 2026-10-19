@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Badge } from '@/components/arc/badge/badge'
 import { Select } from '@/components/arc/select/select'
-import { formatDate, names, type Game, type Mode, type PlayerRef } from '../api'
+import { api, formatDate, names, type Court, type Game, type Mode, type PlayerRef } from '../api'
 
 type Props = {
   player: PlayerRef
@@ -9,6 +9,9 @@ type Props = {
   playerGames: Game[]
   mode: string
   modes: Mode[]
+  courts: Court[]
+  runCourts: Record<string, number>
+  onChange: () => void
 }
 
 const WEEKDAYS = [
@@ -56,9 +59,11 @@ function gameWon(game: Game, playerId: number) {
   return onA ? game.scoreA > game.scoreB : game.scoreB > game.scoreA
 }
 
-export function RunAttendanceCalendar({ player, runGames, playerGames, mode, modes }: Props) {
+export function RunAttendanceCalendar({ player, runGames, playerGames, mode, modes, courts, runCourts, onChange }: Props) {
   const [monthSelection, setMonthSelection] = useState('')
   const [selectedDay, setSelectedDay] = useState<{ key: string; date: string } | null>(null)
+  const [savingCourt, setSavingCourt] = useState(false)
+  const [courtError, setCourtError] = useState('')
   const options = buildMonthOptions(runGames)
   const newestGameMonth = runGames.reduce((latest, game) => {
     const value = game.playedAt.slice(0, 7)
@@ -97,7 +102,23 @@ export function RunAttendanceCalendar({ player, runGames, playerGames, mode, mod
   const detailDate = selectedDay?.key === selectedMonthKey ? selectedDay.date : ''
   const detailGames = detailDate ? runGamesByDate.get(detailDate) ?? [] : []
   const attendedDetailRun = detailDate ? playerDates.has(detailDate) : false
+  const detailCourtId = detailDate ? runCourts[detailDate] : undefined
   const modeLabel = (id: string) => modes.find((item) => item.id === id)?.label ?? id
+  const changeRunCourt = async (value: string) => {
+    if (!detailDate || savingCourt) return
+    const courtId = value === 'none' ? null : Number(value)
+    if (courtId === (detailCourtId ?? null)) return
+    setSavingCourt(true)
+    setCourtError('')
+    try {
+      await api.setRunCourt(detailDate, courtId)
+      onChange()
+    } catch (error) {
+      setCourtError((error as Error).message)
+    } finally {
+      setSavingCourt(false)
+    }
+  }
 
   return (
     <section className="run-attendance" aria-label={`Run attendance for ${player.name}`}>
@@ -172,6 +193,20 @@ export function RunAttendanceCalendar({ player, runGames, playerGames, mode, mod
             {formatDate(detailDate)} · {attendedDetailRun ? 'Attended' : 'Not attended'} · {detailGames.length}{' '}
             {detailGames.length === 1 ? 'game' : 'games'}
           </h4>
+          <div className="run-attendance-court">
+            <Select
+              label="Court"
+              description="Applies to every game on this date."
+              options={[
+                ...courts.map((court) => ({ value: String(court.id), label: court.name })),
+                { value: 'none', label: 'No court' },
+              ]}
+              value={detailCourtId === undefined ? 'none' : String(detailCourtId)}
+              disabled={savingCourt}
+              onValueChange={changeRunCourt}
+            />
+          </div>
+          {courtError && <p className="note" role="alert">Could not update court: {courtError}</p>}
           <ul>
             {detailGames.map((game) => {
               const played = [...game.teamA, ...game.teamB].some((member) => member.id === player.id)

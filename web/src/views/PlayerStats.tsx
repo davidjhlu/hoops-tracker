@@ -5,9 +5,10 @@ import { Button } from '@/components/arc/button/button'
 import { EmptyState } from '@/components/arc/empty-state/empty-state'
 import { MetricCard } from '@/components/arc/metric-card/metric-card'
 import { Select } from '@/components/arc/select/select'
-import { api, formatDate, names, type Game, type Mode, type PlayerRef, type Stats } from '../api'
+import { api, formatDate, matchesCourt, names, type Court, type Game, type Mode, type PlayerRef, type Stats } from '../api'
 import { MIN_MATCHUP_GAMES, summarizePlayerMatchups, type PairingRecord } from '../matchups'
 import { ModeFilter } from './ModeFilter'
+import { CourtFilter } from './CourtFilter'
 import { RunAttendanceCalendar } from './RunAttendanceCalendar'
 
 const PAGE_SIZE = 10
@@ -16,9 +17,14 @@ type Props = {
   modes: Mode[]
   mode: string
   onModeChange: (mode: string) => void
+  courts: Court[]
+  court: string
+  onCourtChange: (court: string) => void
+  runCourts: Record<string, number>
   player: PlayerRef | null
   onPlayerChange: (player: PlayerRef | null) => void
   version: number
+  onChange: () => void
 }
 
 type KeyedResult<T> = {
@@ -82,13 +88,76 @@ function playerWon(game: Game, playerId: number) {
   return onA ? game.scoreA > game.scoreB : game.scoreB > game.scoreA
 }
 
-export function PlayerStats({ modes, mode, onModeChange, player, onPlayerChange, version }: Props) {
+type CourtRecord = { key: string; name: string; games: number; wins: number; losses: number; winPct: number }
+
+function summarizeByCourt(games: Game[], playerId: number): CourtRecord[] {
+  const byCourt = new Map<string, CourtRecord>()
+  for (const game of games) {
+    const key = game.court ? String(game.court.id) : 'none'
+    const row = byCourt.get(key) ?? { key, name: game.court?.name ?? 'No court', games: 0, wins: 0, losses: 0, winPct: 0 }
+    row.games += 1
+    if (playerWon(game, playerId)) row.wins += 1
+    else row.losses += 1
+    byCourt.set(key, row)
+  }
+  return [...byCourt.values()]
+    .map((row) => ({ ...row, winPct: row.wins / row.games }))
+    .sort((a, b) => (a.key === 'none' ? 1 : 0) - (b.key === 'none' ? 1 : 0) || b.winPct - a.winPct || b.games - a.games)
+}
+
+function CourtTable({ rows, playerName }: { rows: CourtRecord[]; playerName: string }) {
+  return (
+    <section className="player-matchup-summary">
+      <div>
+        <h3>By court</h3>
+        <p className="note">Record at each court, best win rate first. Ignores the court filter above.</p>
+      </div>
+      <div className="matchup-table-wrap">
+        <table className="matchup-table">
+          <caption className="sr-only">Record by court for {playerName}</caption>
+          <thead>
+            <tr>
+              <th scope="col">Court</th>
+              <th scope="col">Record</th>
+              <th scope="col">Win rate</th>
+              <th scope="col">Games</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.key}>
+                <th scope="row">{row.name}</th>
+                <td>{row.wins}-{row.losses}</td>
+                <td>{Math.round(row.winPct * 100)}%</td>
+                <td>{row.games}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  )
+}
+
+export function PlayerStats({
+  modes,
+  mode,
+  onModeChange,
+  courts,
+  court,
+  onCourtChange,
+  runCourts,
+  player,
+  onPlayerChange,
+  version,
+  onChange,
+}: Props) {
   const [playersState, setPlayersState] = useState<KeyedResult<PlayerRef[]>>({ key: '', value: null, error: '' })
   const [statsState, setStatsState] = useState<KeyedResult<Stats>>({ key: '', value: null, error: '' })
   const [runGamesState, setRunGamesState] = useState<KeyedResult<Game[]>>({ key: '', value: null, error: '' })
   const [pageState, setPageState] = useState({ key: '', value: 1 })
-  const statsKey = `${mode}:${version}`
-  const gamesKey = `${mode}:${player?.id ?? ''}:${version}`
+  const statsKey = `${mode}:${court}:${version}`
+  const gamesKey = `${mode}:${court}:${player?.id ?? ''}:${version}`
   const runGamesKey = `${mode}:${version}`
 
   useEffect(() => {
@@ -103,13 +172,13 @@ export function PlayerStats({ modes, mode, onModeChange, player, onPlayerChange,
 
   useEffect(() => {
     let live = true
-    api.stats(mode, 0)
+    api.stats(mode, 0, court)
       .then((value) => live && setStatsState({ key: statsKey, value, error: '' }))
       .catch((e: Error) => live && setStatsState({ key: statsKey, value: null, error: e.message }))
     return () => {
       live = false
     }
-  }, [mode, statsKey])
+  }, [mode, court, statsKey])
 
   useEffect(() => {
     let live = true
@@ -130,7 +199,9 @@ export function PlayerStats({ modes, mode, onModeChange, player, onPlayerChange,
 
   const players = playersState.key === 'players' ? playersState.value ?? [] : []
   const stats = statsState.key === statsKey ? statsState.value : null
-  const runGames = runGamesState.key === runGamesKey ? runGamesState.value : null
+  // Every court is fetched once: the By court table needs all of them, everything else follows the court filter.
+  const allRunGames = runGamesState.key === runGamesKey ? runGamesState.value : null
+  const runGames = allRunGames ? allRunGames.filter((game) => matchesCourt(game, court)) : null
   const statsError = statsState.key === statsKey ? statsState.error : ''
   const runGamesError = runGamesState.key === runGamesKey ? runGamesState.error : ''
   const games = runGames && player
@@ -140,6 +211,14 @@ export function PlayerStats({ modes, mode, onModeChange, player, onPlayerChange,
   const gamesError = runGamesError
   const playerStats = stats?.leaderboard.find((entry) => entry.id === player?.id)
   const matchups = games && player ? summarizePlayerMatchups(games, player.id) : null
+  const courtRows =
+    allRunGames && player && courts.length
+      ? summarizeByCourt(
+          allRunGames.filter((game) => [...game.teamA, ...game.teamB].some((member) => member.id === player.id)),
+          player.id,
+        )
+      : []
+  const courtLabel = court === 'none' ? 'No court' : courts.find((c) => String(c.id) === court)?.name
   const pageCount = Math.max(1, Math.ceil((games?.length ?? 0) / PAGE_SIZE))
   const page = pageState.key === gamesKey ? pageState.value : 1
   const currentPage = Math.min(page, pageCount)
@@ -151,6 +230,7 @@ export function PlayerStats({ modes, mode, onModeChange, player, onPlayerChange,
   return (
     <div className="stack">
       <ModeFilter modes={modes} mode={mode} onModeChange={onModeChange} />
+      <CourtFilter courts={courts} court={court} onCourtChange={onCourtChange} />
       {playersState.error && (
         <Alert tone="danger" title="Couldn't load players">
           {playersState.error}
@@ -188,6 +268,7 @@ export function PlayerStats({ modes, mode, onModeChange, player, onPlayerChange,
           <header className="player-stats-header">
             <h2>{player.name}</h2>
             {mode && <Badge size="sm" tone="neutral">{modeLabel(mode)}</Badge>}
+            {courtLabel && <Badge size="sm" tone="neutral">{courtLabel}</Badge>}
           </header>
 
           {playerStats ? (
@@ -213,13 +294,24 @@ export function PlayerStats({ modes, mode, onModeChange, player, onPlayerChange,
               />
             </div>
           ) : (
-            <p className="note">{stats ? 'No games for this player in the selected mode yet.' : 'Loading player stats…'}</p>
+            <p className="note">{stats ? 'No games for this player with these filters yet.' : 'Loading player stats…'}</p>
           )}
 
           {games && runGames && (
-            <RunAttendanceCalendar player={player} playerGames={games} runGames={runGames} mode={mode} modes={modes} />
+            <RunAttendanceCalendar
+              player={player}
+              playerGames={games}
+              runGames={runGames}
+              mode={mode}
+              modes={modes}
+              courts={courts}
+              runCourts={runCourts}
+              onChange={onChange}
+            />
           )}
           {games && !runGames && !runGamesError && <p className="note">Loading run attendance…</p>}
+
+          {courtRows.length > 0 && <CourtTable rows={courtRows} playerName={player.name} />}
 
           {matchups && (
             <section className="player-matchup-summary">
@@ -237,7 +329,7 @@ export function PlayerStats({ modes, mode, onModeChange, player, onPlayerChange,
           <section className="player-recent-games">
             <div>
               <h3>Game history</h3>
-              {games && <p className="note">{games.length} {games.length === 1 ? 'game' : 'games'}{mode ? ` in ${modeLabel(mode)}` : ' across all modes'}.</p>}
+              {games && <p className="note">{games.length} {games.length === 1 ? 'game' : 'games'}{mode ? ` in ${modeLabel(mode)}` : ' across all modes'}{courtLabel ? ` at ${courtLabel}` : ''}.</p>}
             </div>
             {gamesError && (
               <Alert tone="danger" title="Couldn't load game history">
@@ -245,7 +337,7 @@ export function PlayerStats({ modes, mode, onModeChange, player, onPlayerChange,
               </Alert>
             )}
             {loadingGames && <p className="note">Loading game history…</p>}
-            {games?.length === 0 && <p className="note">No games to show for this player in the selected mode.</p>}
+            {games?.length === 0 && <p className="note">No games to show for this player with these filters.</p>}
             {pageGames.length > 0 && (
               <>
                 <ol className="player-recent-list">

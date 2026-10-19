@@ -1,5 +1,10 @@
 export type Mode = { id: string; label: string }
 export type PlayerRef = { id: number; name: string }
+export type Court = { id: number; name: string }
+/** Court list plus each run date's court id. */
+export type Courts = { courts: Court[]; runs: Record<string, number> }
+/** Court filter value: '' for every court, 'none' for runs without a court, or a court id. */
+export type CourtFilter = string
 
 export type Game = {
   id: number
@@ -7,6 +12,7 @@ export type Game = {
   playedAt: string
   scoreA: number
   scoreB: number
+  court: Court | null
   teamA: PlayerRef[]
   teamB: PlayerRef[]
 }
@@ -42,6 +48,7 @@ export type NewGame = {
   scoreB: number
   teamA: string[]
   teamB: string[]
+  courtId?: number | null
 }
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
@@ -67,8 +74,23 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name }),
     }),
-  games: (mode?: string, player?: number) => request<Game[]>(`/api/games${query({ mode, player })}`),
-  stats: (mode?: string, minGames?: number) => request<Stats>(`/api/stats${query({ mode, minGames })}`),
+  games: (mode?: string, player?: number, court?: CourtFilter) =>
+    request<Game[]>(`/api/games${query({ mode, player, court })}`),
+  stats: (mode?: string, minGames?: number, court?: CourtFilter) =>
+    request<Stats>(`/api/stats${query({ mode, minGames, court })}`),
+  courts: () => request<Courts>('/api/courts'),
+  addCourt: (name: string) =>
+    request<Court>('/api/courts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    }),
+  setRunCourt: (playedAt: string, courtId: number | null) =>
+    request<{ ok: true }>(`/api/runs/${playedAt}/court`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ courtId }),
+    }),
   addGame: (game: NewGame) =>
     request<{ id: number }>('/api/games', {
       method: 'POST',
@@ -112,6 +134,11 @@ const MODE_BY_TEAM_SIZE: Record<number, string> = { 3: 'hc3', 4: 'hc4', 5: 'fc5'
 
 export function modeForTeamSize(size: number): string | undefined {
   return MODE_BY_TEAM_SIZE[size]
+}
+
+export function matchesCourt(game: Game, court: CourtFilter) {
+  if (!court) return true
+  return court === 'none' ? game.court === null : game.court?.id === Number(court)
 }
 
 export const names = (team: PlayerRef[]) => team.map((p) => p.name).join(', ')
