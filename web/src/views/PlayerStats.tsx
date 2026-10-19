@@ -7,8 +7,7 @@ import { MetricCard } from '@/components/arc/metric-card/metric-card'
 import { Select } from '@/components/arc/select/select'
 import { api, formatDate, matchesCourt, names, type Court, type Game, type Mode, type PlayerRef, type Stats } from '../api'
 import { MIN_MATCHUP_GAMES, summarizePlayerMatchups, type PairingRecord } from '../matchups'
-import { ModeFilter } from './ModeFilter'
-import { CourtFilter } from './CourtFilter'
+import { GameFilters } from './GameFilters'
 import { RunAttendanceCalendar } from './RunAttendanceCalendar'
 
 const PAGE_SIZE = 10
@@ -109,8 +108,7 @@ function CourtTable({ rows, playerName }: { rows: CourtRecord[]; playerName: str
   return (
     <section className="player-matchup-summary">
       <div>
-        <h3>By court</h3>
-        <p className="note">Record at each court, best win rate first. Ignores the court filter above.</p>
+        <h3>Winrate by court</h3>
       </div>
       <div className="matchup-table-wrap">
         <table className="matchup-table">
@@ -229,8 +227,7 @@ export function PlayerStats({
 
   return (
     <div className="stack">
-      <ModeFilter modes={modes} mode={mode} onModeChange={onModeChange} />
-      <CourtFilter courts={courts} court={court} onCourtChange={onCourtChange} />
+      <GameFilters modes={modes} mode={mode} onModeChange={onModeChange} courts={courts} court={court} onCourtChange={onCourtChange} />
       {playersState.error && (
         <Alert tone="danger" title="Couldn't load players">
           {playersState.error}

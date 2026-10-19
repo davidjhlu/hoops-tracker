@@ -6,8 +6,7 @@ import { ConfirmMorph } from '@/components/arc/confirm-morph/confirm-morph'
 import { EmptyState } from '@/components/arc/empty-state/empty-state'
 import { Alert } from '@/components/arc/alert/alert'
 import { api, formatDate, names, type Court, type Courts, type Game, type Mode } from '../api'
-import { ModeFilter } from './ModeFilter'
-import { CourtFilter } from './CourtFilter'
+import { GameFilters } from './GameFilters'
 import { LogGame } from './LogGame'
 
 type Props = {
@@ -66,6 +65,12 @@ export function GameLog({ modes, mode, onModeChange, courts, court, onCourtChang
         (a, b) => b.playedAt.localeCompare(a.playedAt) || b.id - a.id,
       )
     : null
+  const runs = new Map<string, Game[]>()
+  for (const game of shown ?? []) {
+    const run = runs.get(game.playedAt)
+    if (run) run.push(game)
+    else runs.set(game.playedAt, [game])
+  }
   const remove = async (game: Game) => {
     await api.deleteGame(game.id)
     setGhost(game, true)
@@ -87,8 +92,7 @@ export function GameLog({ modes, mode, onModeChange, courts, court, onCourtChang
 
   return (
     <div className="stack">
-      <ModeFilter modes={modes} mode={mode} onModeChange={onModeChange} />
-      <CourtFilter courts={courts} court={court} onCourtChange={onCourtChange} />
+      <GameFilters modes={modes} mode={mode} onModeChange={onModeChange} courts={courts} court={court} onCourtChange={onCourtChange} />
 
       {error && (
         <Alert tone="danger" title="Couldn't load games">
@@ -104,78 +108,83 @@ export function GameLog({ modes, mode, onModeChange, courts, court, onCourtChang
         />
       )}
 
-      <ol className="games">
-        {shown?.map((g) => {
-          if (editingId === g.id && !ghosts.has(g.id)) {
-            return (
-              <li key={g.id} className="game-edit" aria-label={`Editing game on ${formatDate(g.playedAt)}`}>
-                <LogGame
-                  modes={modes}
-                  courtData={courtData}
-                  version={version}
-                  game={g}
-                  onCancel={() => setEditingId(null)}
-                  onSaved={() => {
-                    setEditingId(null)
-                    onChange()
-                  }}
-                />
-              </li>
-            )
-          }
-          const aWon = g.scoreA > g.scoreB
-          const rowClassName = ['game', ghosts.has(g.id) ? 'deleted' : ''].filter(Boolean).join(' ')
-          return (
-            <li key={g.id} className={rowClassName}>
-              <div className="game-meta">
-                <span>{formatDate(g.playedAt)}</span>
-                {!mode && (
-                  <Badge size="sm" tone={MODE_TONES[g.mode] ?? 'neutral'}>
-                    {modeLabel(g.mode)}
-                  </Badge>
-                )}
-                {g.court && !court && (
-                  <span className="game-court">
-                    <MapPin size={12} aria-hidden="true" />
-                    {g.court.name}
-                  </span>
-                )}
-              </div>
-              <div className="game-score">
-                <span className={aWon ? 'team won' : 'team'}>{names(g.teamA)}</span>
-                <span className="score">
-                  <span className={aWon ? 'won' : 'lost'}>{g.scoreA}</span>
-                  <span className="dash">-</span>
-                  <span className={aWon ? 'lost' : 'won'}>{g.scoreB}</span>
-                </span>
-                <span className={aWon ? 'team right' : 'team right won'}>{names(g.teamB)}</span>
-              </div>
-              <div className="game-actions">
-                {!ghosts.has(g.id) && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    aria-label={`Edit game on ${formatDate(g.playedAt)}`}
-                    onClick={() => setEditingId(g.id)}
-                  >
-                    <Pencil size={14} strokeWidth={1.75} aria-hidden="true" />
-                    Edit
-                  </Button>
-                )}
-                <ConfirmMorph
-                  label="Delete"
-                  icon={<Trash2 size={14} strokeWidth={1.75} />}
-                  prompt="Delete this game?"
-                  onConfirm={() => remove(g)}
-                  onUndo={() => restore(g)}
-                  onStateChange={(state) => state === 'idle' && setGhost(g, false)}
-                />
-              </div>
-            </li>
-          )
-        })}
-      </ol>
+      {[...runs].map(([date, runGames]) => (
+        <section className="game-run" key={date} aria-label={`Run on ${formatDate(date)}`}>
+          <header className="game-run-header">
+            <h2><time dateTime={date}>{formatDate(date)}</time></h2>
+            <span className="game-court">
+              <MapPin size={14} aria-hidden="true" />
+              {runGames[0].court?.name ?? 'No court'}
+            </span>
+            <span className="game-run-count">{runGames.length} {runGames.length === 1 ? 'game' : 'games'}</span>
+          </header>
+          <ol className="games">
+            {runGames.map((g) => {
+              if (editingId === g.id && !ghosts.has(g.id)) {
+                return (
+                  <li key={g.id} className="game-edit" aria-label={`Editing game on ${formatDate(g.playedAt)}`}>
+                    <LogGame
+                      modes={modes}
+                      courtData={courtData}
+                      version={version}
+                      game={g}
+                      onCancel={() => setEditingId(null)}
+                      onSaved={() => {
+                        setEditingId(null)
+                        onChange()
+                      }}
+                    />
+                  </li>
+                )
+              }
+              const aWon = g.scoreA > g.scoreB
+              const rowClassName = ['game', ghosts.has(g.id) ? 'deleted' : ''].filter(Boolean).join(' ')
+              return (
+                <li key={g.id} className={rowClassName}>
+                  {!mode && (
+                    <div className="game-meta">
+                      <Badge size="sm" tone={MODE_TONES[g.mode] ?? 'neutral'}>
+                        {modeLabel(g.mode)}
+                      </Badge>
+                    </div>
+                  )}
+                  <div className="game-score">
+                    <span className={aWon ? 'team won' : 'team'}>{names(g.teamA)}</span>
+                    <span className="score">
+                      <span className={aWon ? 'won' : 'lost'}>{g.scoreA}</span>
+                      <span className="dash">-</span>
+                      <span className={aWon ? 'lost' : 'won'}>{g.scoreB}</span>
+                    </span>
+                    <span className={aWon ? 'team right' : 'team right won'}>{names(g.teamB)}</span>
+                  </div>
+                  <div className="game-actions">
+                    {!ghosts.has(g.id) && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        aria-label={`Edit game on ${formatDate(g.playedAt)}`}
+                        onClick={() => setEditingId(g.id)}
+                      >
+                        <Pencil size={14} strokeWidth={1.75} aria-hidden="true" />
+                        Edit
+                      </Button>
+                    )}
+                    <ConfirmMorph
+                      label="Delete"
+                      icon={<Trash2 size={14} strokeWidth={1.75} />}
+                      prompt="Delete this game?"
+                      onConfirm={() => remove(g)}
+                      onUndo={() => restore(g)}
+                      onStateChange={(state) => state === 'idle' && setGhost(g, false)}
+                    />
+                  </div>
+                </li>
+              )
+            })}
+          </ol>
+        </section>
+      ))}
     </div>
   )
 }

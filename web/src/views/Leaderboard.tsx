@@ -6,8 +6,7 @@ import { Select } from '@/components/arc/select/select'
 import { EmptyState } from '@/components/arc/empty-state/empty-state'
 import { Alert } from '@/components/arc/alert/alert'
 import { api, type Court, type Leader, type Mode, type PlayerRef, type PlayerStats, type Stats } from '../api'
-import { ModeFilter } from './ModeFilter'
-import { CourtFilter } from './CourtFilter'
+import { GameFilters } from './GameFilters'
 import { PlayerRecentGames } from './PlayerRecentGames'
 import { useMediaQuery } from '../useMediaQuery'
 
@@ -147,8 +146,7 @@ export function Leaderboard({ modes, mode, onModeChange, courts, court, onCourtC
 
   return (
     <div className="stack">
-      <ModeFilter modes={modes} mode={mode} onModeChange={onModeChange} />
-      <CourtFilter courts={courts} court={court} onCourtChange={onCourtChange} />
+      <GameFilters modes={modes} mode={mode} onModeChange={onModeChange} courts={courts} court={court} onCourtChange={onCourtChange} />
 
       {error && (
         <Alert tone="danger" title="Couldn't load the leaderboard">
